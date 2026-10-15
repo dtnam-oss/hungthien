@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Backend: giao thức /dt cho mọi module"
-status: pending
+status: completed
 priority: P1
 effort: "1.5d"
 dependencies: []
@@ -60,10 +60,10 @@ Bộ lọc theo module (giữ tên tham số đang có ở REST):
 7. Commit `feat(server): endpoint /dt DataTables cho mọi module`.
 
 ## Success Criteria
-- [ ] 8 endpoint `/dt` trả cùng shape; lọc nhiều giá trị hoạt động (`status=A,B`).
-- [ ] `SORTABLE_COLUMNS` của 8 module được export và có test khớp bảng trên.
-- [ ] `npm run test --workspace=packages/server` xanh, `tsc`/`build` server xanh.
-- [ ] REST `GET /` cũ không đổi (dropdown/modal vẫn chạy).
+- [x] 8 endpoint `/dt` trả cùng shape; lọc nhiều giá trị hoạt động (`status=A,B`).
+- [x] `SORTABLE_COLUMNS` của 8 module được export và có test khớp bảng trên.
+- [x] `npm run test --workspace=packages/server` xanh, `tsc`/`build` server xanh.
+- [x] REST `GET /` cũ không đổi (dropdown/modal vẫn chạy).
 
 ## Risk Assessment
 - **Thứ tự route**: `/dt` đặt sau `/:id` sẽ bị bắt nhầm là id → tín hiệu: 400/404 "id không hợp lệ"; đặt `/dt` trước.

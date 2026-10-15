@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "Xác minh, review, docs, bàn giao"
-status: pending
+status: completed
 priority: P1
 effort: "0.5d"
 dependencies: [4, 5]
@@ -33,10 +33,10 @@ Không đổi code ngoài sửa finding review. Dùng lại bộ công cụ đã
 6. Journal; `ak plan close`.
 
 ## Success Criteria
-- [ ] Bảng network: 9 trang × 5 thao tác = 1 request mỗi ô.
-- [ ] Ảnh đối chiếu Xe/Chuyến đi (light/dark) lưu docs; bảng cao theo viewport ở 3 độ rộng; 390px không cuộn ngang.
-- [ ] Review: 0 P1 mở; tương phản 0 fail.
-- [ ] `tsc`, `oxlint`, build, vitest xanh cả 2 gói; commit đã push.
+- [x] Bảng network: 9 trang × 5 thao tác = 1 request mỗi ô.
+- [x] Ảnh đối chiếu Xe/Chuyến đi (light/dark) lưu docs; bảng cao theo viewport ở 3 độ rộng; 390px không cuộn ngang.
+- [x] Review: 0 P1 mở; tương phản 0 fail.
+- [x] `tsc`, `oxlint`, build, vitest xanh cả 2 gói; commit đã push.
 
 ## Risk Assessment
 - **DB mẫu ít dòng (2 chuyến) không kiểm được "lọc từ tổng"/phân trang 200** → tester tạo 250 chuyến test qua API rồi xóa (hoặc dùng bảng Xe 67 dòng + Khách hàng 46 với `length=50`).

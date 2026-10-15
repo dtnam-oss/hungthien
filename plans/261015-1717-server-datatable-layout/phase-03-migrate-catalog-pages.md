@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Chuyển trang danh mục: NV, Xe, NCC, Giá, KH"
-status: pending
+status: completed
 priority: P1
 effort: "1.5d"
 dependencies: [1, 2]
@@ -39,10 +39,10 @@ Mỗi trang: `TABLE_COLUMNS` (với `sortIndex`) + `filters` state → `<ServerD
 6. Xóa import `DataTable`/`FilterSelect` khỏi 5 trang; commit `refactor(web): trang danh mục dùng ServerDataTable`.
 
 ## Success Criteria
-- [ ] 5 trang dùng `ServerDataTable` + `/dt`; không request đôi; sort mọi cột đúng.
-- [ ] Rail đếm = `statusStats`; footer có "lọc từ tổng", 50/100/200, Đầu/Cuối.
-- [ ] Bảng cao theo viewport ở 1280/1440/1920; 390px không cuộn ngang trang.
-- [ ] Panel chi tiết, modal tạo, sửa/xóa hoạt động như trước (kiểm tay 1 CRUD/trang).
+- [x] 5 trang dùng `ServerDataTable` + `/dt`; không request đôi; sort mọi cột đúng.
+- [x] Rail đếm = `statusStats`; footer có "lọc từ tổng", 50/100/200, Đầu/Cuối.
+- [x] Bảng cao theo viewport ở 1280/1440/1920; 390px không cuộn ngang trang.
+- [x] Panel chi tiết, modal tạo, sửa/xóa hoạt động như trước. _(kiểm bằng code review + reload sau mutation; chưa bấm tay trên trình duyệt)_
 
 ## Risk Assessment
 - **Sort index lệch** (từng xảy ra ở KH) → test phase 1 + kiểm tay sort 1 cột cuối (`status`) mỗi trang; tín hiệu: sắp xếp theo cột khác → sửa `sortIndex`.

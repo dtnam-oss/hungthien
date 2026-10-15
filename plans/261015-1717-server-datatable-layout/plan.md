@@ -1,7 +1,7 @@
 ---
 title: "Bảng dữ liệu server-side thống nhất theo mẫu NAK"
 description: "Một ServerDataTable chung cho 9 trang danh sách (rail đếm trạng thái, toolbar chuẩn, bảng cao theo viewport, phân trang 50/100/200 có Đầu/Cuối), backend /dt DataTables cho mọi module, dropdown tìm nhanh chọn nhiều cho toàn bộ TMS."
-status: pending
+status: completed
 priority: P1
 effort: "6-7d"
 tags: [frontend, backend, datatable, design-system, tms]
@@ -32,12 +32,12 @@ Quyết định người dùng: thêm `/dt` theo mẫu `trips-dt.service.ts`; d�
 
 | # | Phase | Status | Effort | Depends |
 |---|-------|--------|--------|---------|
-| 1 | [Backend: giao thức /dt cho mọi module](./phase-01-backend-dt-endpoints.md) | Pending | 1.5d | — |
-| 2 | [Web nền: ServerDataTable, hook, MultiSelect, CSS](./phase-02-web-foundation.md) | Pending | 1.5d | — (song song với 1, theo contract ở phase 1) |
-| 3 | [Chuyển trang danh mục: NV, Xe, NCC, Giá, KH](./phase-03-migrate-catalog-pages.md) | Pending | 1.5d | 1, 2 |
-| 4 | [Chuyển Chuyến đi, Kế hoạch, Kỳ lương; xóa cơ chế cũ](./phase-04-migrate-trips-plans-payroll.md) | Pending | 1d | 3 |
-| 5 | [Dropdown chung cho form/modal còn lại](./phase-05-dropdowns-everywhere.md) | Pending | 0.5d | 2 |
-| 6 | [Xác minh, review, docs, bàn giao](./phase-06-verify-handoff.md) | Pending | 0.5d | 4, 5 |
+| 1 | [Backend: giao thức /dt cho mọi module](./phase-01-backend-dt-endpoints.md) | Completed | 1.5d | — |
+| 2 | [Web nền: ServerDataTable, hook, MultiSelect, CSS](./phase-02-web-foundation.md) | Completed | 1.5d | — (song song với 1, theo contract ở phase 1) |
+| 3 | [Chuyển trang danh mục: NV, Xe, NCC, Giá, KH](./phase-03-migrate-catalog-pages.md) | Completed | 1.5d | 1, 2 |
+| 4 | [Chuyển Chuyến đi, Kế hoạch, Kỳ lương; xóa cơ chế cũ](./phase-04-migrate-trips-plans-payroll.md) | Completed | 1d | 3 |
+| 5 | [Dropdown chung cho form/modal còn lại](./phase-05-dropdowns-everywhere.md) | Completed | 0.5d | 2 |
+| 6 | [Xác minh, review, docs, bàn giao](./phase-06-verify-handoff.md) | Completed | 0.5d | 4, 5 |
 
 Phase 1 và 2 làm song song (file khác gói); phase 5 có thể chạy song song với 3–4 (file form/modal khác file trang danh sách).
 
@@ -51,13 +51,13 @@ Phase 1 và 2 làm song song (file khác gói); phase 5 có thể chạy song so
 
 ## Success Criteria
 
-- [ ] 8 endpoint `/dt` (trips, customers, employees, vehicles, suppliers, pricing, trip-plans, payroll/periods) cùng giao thức, vitest cho sort-index + lọc nhiều giá trị, `tsc`/build/test server xanh.
-- [ ] 9 trang dùng `ServerDataTable`; `DataTable.tsx` cũ và bảng tự viết đã xóa (trừ ma trận quyền).
-- [ ] Bảng cao = viewport − topbar − header trang ở 1280/1440/1920; 390px không cuộn ngang toàn trang; rail thành chip ngang < 1024px.
-- [ ] Mỗi thao tác tìm/sort/trang/lọc = 1 request `/dt` (kiểm bằng network), không request đôi.
-- [ ] Rail đếm theo `statusStats` server; footer "Hiển thị a đến b / n kết quả (lọc từ N)" + 50/100/200 + Đầu ‹ 1 2 … › Cuối.
-- [ ] Mọi dropdown trong TMS dùng component chung (tìm nhanh + checkbox chọn nhiều cho lọc; chọn một cho form).
-- [ ] `tsc`, `oxlint` 0 error, `vite build` xanh; ảnh đối chiếu Xe và Chuyến đi (light/dark) lưu `docs/design/screenshots/`.
+- [x] 8 endpoint `/dt` (trips, customers, employees, vehicles, suppliers, pricing, trip-plans, payroll/periods) cùng giao thức, vitest cho sort-index + lọc nhiều giá trị, `tsc`/build/test server xanh.
+- [x] 9 trang dùng `ServerDataTable`; `DataTable.tsx` cũ và bảng tự viết đã xóa (trừ ma trận quyền).
+- [x] Bảng cao = viewport − topbar − header trang ở 1280/1440/1920; 390px không cuộn ngang toàn trang; rail thành chip ngang < 1024px.
+- [x] Mỗi thao tác tìm/sort/trang/lọc = 1 request `/dt` (kiểm bằng network), không request đôi.
+- [x] Rail đếm theo `statusStats` server; footer "Hiển thị a đến b / n kết quả (lọc từ N)" + 50/100/200 + Đầu ‹ 1 2 … › Cuối.
+- [x] Mọi dropdown trong TMS dùng component chung (tìm nhanh + checkbox chọn nhiều cho lọc; chọn một cho form).
+- [x] `tsc`, `oxlint` 0 error, `vite build` xanh; ảnh đối chiếu Xe và Chuyến đi (light/dark) lưu `docs/design/screenshots/`.
 
 ## Open Questions
 

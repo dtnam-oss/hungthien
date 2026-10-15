@@ -991,7 +991,13 @@ body {
 
   /* Rail < 1024px: hàng chip ngang cuộn */
   @media (max-width: 1023px) {
-    .workspace { flex-direction: column; gap: 12px; }
+    /* Dưới 1024px bộ lọc xếp chồng cao → không khóa chiều cao theo viewport nữa:
+       trang cuộn, bảng có chiều cao tối thiểu và tự cuộn khi vượt 70vh */
+    .page-fill { flex: none; min-height: auto; }
+    .workspace { flex-direction: column; gap: 12px; flex: none; }
+    .workspace-card { flex: none; }
+    .tbl-area { flex: none; }
+    .tbl-area > .tbl-wrap { flex: none; min-height: 240px; max-height: 70vh; }
     .workspace > .filter-rail { overflow-y: visible; flex-shrink: 0; }
     .workspace-card { min-height: 360px; }
     .filter-rail.rail-chips { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }

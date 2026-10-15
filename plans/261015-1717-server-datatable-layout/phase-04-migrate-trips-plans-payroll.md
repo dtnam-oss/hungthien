@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Chuyển Chuyến đi, Kế hoạch, Kỳ lương; xóa cơ chế cũ"
-status: pending
+status: completed
 priority: P1
 effort: "1d"
 dependencies: [3]
@@ -37,10 +37,10 @@ dependencies: [3]
 6. Commit `refactor(web): Chuyến đi, Kế hoạch, Kỳ lương dùng ServerDataTable; xóa DataTable cũ`.
 
 ## Success Criteria
-- [ ] 3 trang dùng `ServerDataTable` + `/dt`; Chuyến đi vẫn nhóm 2 cấp, drawer, bulk, CSV hoạt động.
-- [ ] `DataTable.tsx`, `TripFilterRail.tsx` đã xóa; grep `DataTable\b` ngoài `ServerDataTable` = 0.
-- [ ] Không request đôi; footer chuẩn ở cả 3 trang.
-- [ ] `tsc`, `oxlint` 0 error, build xanh.
+- [x] 3 trang dùng `ServerDataTable` + `/dt`; Chuyến đi vẫn nhóm 2 cấp, drawer, bulk, CSV hoạt động.
+- [x] `DataTable.tsx`, `TripFilterRail.tsx` đã xóa; grep `DataTable\b` ngoài `ServerDataTable` = 0.
+- [x] Không request đôi; footer chuẩn ở cả 3 trang.
+- [x] `tsc`, `oxlint` 0 error, build xanh.
 
 ## Risk Assessment
 - **`renderBody` tùy biến làm mất zebra/sticky** → thân bảng Chuyến đi vẫn dùng `.tbl` markup chuẩn; chỉ thay thứ tự hàng/nhóm.

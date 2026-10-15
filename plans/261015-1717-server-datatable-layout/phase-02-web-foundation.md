@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Web nền: ServerDataTable, hook, MultiSelect, CSS"
-status: pending
+status: completed
 priority: P1
 effort: "1.5d"
 dependencies: []
@@ -48,10 +48,10 @@ Token mới: `--row-alt` light `#FAFAFB`, dark `#1A1B20`; `--row-selected` giữ
 7. Commit `feat(web): ServerDataTable, StatusRail, SearchableMultiSelect`.
 
 ## Success Criteria
-- [ ] `ServerDataTable` render được với `/trips/dt` hoặc `/customers/dt` hiện có (chưa cần phase 1) — bảng cao theo viewport, footer đúng.
-- [ ] `SearchableMultiSelect` dùng được bằng bàn phím; chọn nhiều → `filters` gửi CSV.
-- [ ] `tsc`, `oxlint` 0 error, build xanh; không màu cứng; dark mode đạt tương phản.
-- [ ] Docs design system có mục Bảng dữ liệu + Dropdown.
+- [x] `ServerDataTable` render được với `/trips/dt` hoặc `/customers/dt` hiện có (chưa cần phase 1) — bảng cao theo viewport, footer đúng.
+- [x] `SearchableMultiSelect` dùng được bằng bàn phím; chọn nhiều → `filters` gửi CSV.
+- [x] `tsc`, `oxlint` 0 error, build xanh; không màu cứng; dark mode đạt tương phản.
+- [x] Docs design system có mục Bảng dữ liệu + Dropdown.
 
 ## Risk Assessment
 - **Bảng cao theo viewport làm panel chi tiết inline lệch chiều cao** → `aside` dùng cùng `.workspace` và `h-full`; tín hiệu: panel ngắn hơn bảng → sửa CSS, không đổi trang.

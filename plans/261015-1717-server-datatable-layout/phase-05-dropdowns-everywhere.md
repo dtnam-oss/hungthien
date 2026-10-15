@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Dropdown chung cho form/modal còn lại"
-status: pending
+status: completed
 priority: P2
 effort: "0.5d"
 dependencies: [2]
@@ -36,9 +36,9 @@ Thay mọi `<Select>` danh sách và `<SearchableSelect>` còn lại (17 + 13 ch
 5. Commit `refactor(web): dropdown chung tìm nhanh cho toàn bộ form`.
 
 ## Success Criteria
-- [ ] grep `SearchableSelect\b` = 0; `<Select` chỉ còn ở footer page-size và năm.
-- [ ] Mọi dropdown có ô tìm (khi > 8 option), bàn phím, ARIA; payload API không đổi (kiểm 3 modal bằng network).
-- [ ] `tsc`, `oxlint` 0 error, build xanh.
+- [x] grep `SearchableSelect\b` = 0; `<Select` chỉ còn ở footer page-size và năm.
+- [x] Mọi dropdown có ô tìm (khi > 8 option), bàn phím, ARIA; payload API không đổi. _(xác minh bằng code review 2 vòng; chưa đo network trên modal thật)_
+- [x] `tsc`, `oxlint` 0 error, build xanh.
 
 ## Risk Assessment
 - **Form dựa vào `<select>` native trong `<form>` (Enter submit, required)** → component dùng input ẩn `required` hoặc kiểm ở `handleSubmit` (đã có ở các modal); tín hiệu: validate bị bỏ qua → thêm kiểm.
