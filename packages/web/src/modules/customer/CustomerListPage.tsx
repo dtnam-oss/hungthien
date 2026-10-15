@@ -1,19 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import type { FormEvent, KeyboardEvent } from 'react';
-import clsx from 'clsx';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type { FormEvent } from 'react';
 import { useAuth } from '../../shared/auth-context';
-import { useServerTable } from '../../shared/hooks/useServerTable';
-import type { ServerTableColumn } from '../../shared/hooks/useServerTable';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
 import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import {
-  Alert, Button, Card, EmptyState, Field, FilterSelect, FormGrid, Input, LoadingBlock,
-  PageHeader, SearchBox, Spinner, StatusPill, SubCard,
+  Alert, Button, Field, FormGrid, Input, LoadingBlock, PageHeader, StatusPill, SubCard,
 } from '../../shared/ui';
 import { errorMessage } from '../../shared/format';
 import api from '../../shared/api';
-import { Plus, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -46,21 +44,26 @@ interface CustomerEditForm {
 }
 
 /* ── Cột hiển thị. `sortIndex` = vị trí trong SORTABLE_COLUMNS của backend
-   (customer.routes.ts: code, name, taxCode, email, phone, status) ─────── */
+   (customer-dt.service.ts: code, name, taxCode, email, phone, status) ─── */
 
-const TABLE_COLUMNS: { key: string; label: string; sortIndex?: number; className?: string }[] = [
-  { key: '#',             label: '#',              className: 'w-10 center' },
-  { key: 'code',          label: 'Mã KH',         sortIndex: 0, className: 'w-24' },
-  { key: 'name',          label: 'Tên khách hàng', sortIndex: 1 },
-  { key: 'taxCode',       label: 'MST',            sortIndex: 2, className: 'w-28 hidden md:table-cell' },
-  { key: 'address',       label: 'Địa chỉ',       className: 'hidden xl:table-cell' },
-  { key: 'contactPerson', label: 'Người LH',      className: 'w-32 hidden lg:table-cell' },
-  { key: 'phone',         label: 'SĐT',           sortIndex: 4, className: 'w-28 hidden md:table-cell' },
-  { key: 'status',        label: 'Trạng thái',    sortIndex: 5, className: 'w-28' },
+const COLUMNS: ServerDataColumn<Customer>[] = [
+  { key: 'code', label: 'Mã KH', sortIndex: 0, className: 'whitespace-nowrap',
+    render: (row) => <span className="code whitespace-nowrap">{row.code}</span> },
+  { key: 'name', label: 'Tên khách hàng', sortIndex: 1, className: 'whitespace-nowrap',
+    render: (row) => <span className="cell-title block truncate" style={{ maxWidth: 240 }} title={row.name}>{row.name}</span> },
+  { key: 'taxCode', label: 'MST', sortIndex: 2, className: 'whitespace-nowrap', hideBelow: 'md',
+    render: (row) => row.taxCode || '—' },
+  { key: 'address', label: 'Địa chỉ', className: 'hidden 2xl:table-cell',
+    render: (row) => <span className="truncate block" style={{ color: 'var(--muted)', maxWidth: 260 }} title={row.address || ''}>{row.address || '—'}</span> },
+  { key: 'contactPerson', label: 'Người LH', className: 'whitespace-nowrap', hideBelow: 'lg',
+    render: (row) => row.contactPerson || '—' },
+  { key: 'phone', label: 'SĐT', sortIndex: 4, className: 'whitespace-nowrap', hideBelow: 'md',
+    render: (row) => row.phone || '—' },
+  { key: 'status', label: 'Trạng thái', sortIndex: 5, className: 'whitespace-nowrap',
+    render: (row) => <CustomerStatus status={row.status} /> },
 ];
 
-/* Danh sách cột gửi lên server, đúng thứ tự SORTABLE_COLUMNS ở backend */
-const SERVER_COLUMNS: ServerTableColumn[] = ['code', 'name', 'taxCode', 'email', 'phone', 'status'].map(() => ({ sortable: true }));
+const RAIL_STATUSES = ['ACTIVE', 'INACTIVE'];
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Hoạt động',
@@ -86,26 +89,11 @@ export function CustomerListPage() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  /* ── Filters ──────────────────────────────────────────────────── */
-  const [statusFilter, setStatusFilter] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-
-  /* ── Server table hook ────────────────────────────────────────── */
-  const filters: Record<string, string | number | undefined> = {};
-  if (statusFilter) filters.status = statusFilter;
-
-  const table = useServerTable<Customer>({
-    endpoint: '/customers/dt',
-    filters,
-    columns: SERVER_COLUMNS,
-    defaultLength: 50,
-  });
-
-  useEffect(() => {
-    if (searchInput === table.search) return; // tránh gọi /dt lần 2 khi mới mở trang
-    table.setSearch(searchInput);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput]);
+  /* ── Filters: rail trạng thái ─────────────────────────────────── */
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const filters = useMemo(() => ({ status: statusFilter }), [statusFilter]);
+  const tableRef = useRef<ServerDataTableApi>(null);
+  const reload = useCallback(() => tableRef.current?.reload(), []);
 
   /* ── Panel state ──────────────────────────────────────────────── */
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -145,11 +133,11 @@ export function CustomerListPage() {
     try {
       await api.delete(`/customers/${detail.id}`);
       handleClose();
-      table.reload();
+      reload();
     } catch (err: unknown) {
       alert(errorMessage(err, 'Lỗi xóa'));
     }
-  }, [detail, handleClose, table]);
+  }, [detail, handleClose, reload]);
 
   /* ── Edit ─────────────────────────────────────────────────────── */
   const handleToggleEdit = useCallback(() => {
@@ -177,17 +165,12 @@ export function CustomerListPage() {
       await api.put(`/customers/${detail.id}`, editForm);
       setIsEditing(false);
       loadDetail(detail.id);
-      table.reload();
+      reload();
     } catch (err: unknown) {
       alert(errorMessage(err, 'Lỗi lưu'));
     }
     setSaving(false);
-  }, [detail, editForm, loadDetail, table]);
-
-  /* ── Stats filter shortcut ────────────────────────────────────── */
-  const handleStatusStatClick = (status: string) => {
-    setStatusFilter(status === statusFilter ? '' : status);
-  };
+  }, [detail, editForm, loadDetail, reload]);
 
   /* ── Resizable panel ──────────────────────────────────────────── */
   const PANEL_MIN = 400;
@@ -252,8 +235,6 @@ export function CustomerListPage() {
 
   /* ── Render ──────────────────────────────────────────────────── */
   const panelOpen = selectedId !== null;
-  const showEmpty = !table.loading && !table.error && table.data.length === 0;
-  const showInitialLoading = table.loading && table.data.length === 0;
 
   const panelProps = {
     isOpen: panelOpen,
@@ -269,181 +250,24 @@ export function CustomerListPage() {
     <PanelContent detail={detail} loading={detailLoading} isEditing={isEditing} editForm={editForm} setEditForm={setEditForm} />
   );
 
-  const handleSortKey = (e: KeyboardEvent<HTMLTableCellElement>, idx: number) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); table.setSort(idx); }
-  };
-
   return (
     <div className="page page-fill">
-      <PageHeader
-        title="Khách hàng"
-        description="Quản lý danh sách khách hàng"
+      <PageHeader title="Khách hàng" description="Quản lý danh sách khách hàng" />
+
+      <ServerDataTable<Customer>
+        endpoint="/customers/dt"
+        columns={COLUMNS}
+        filters={filters}
+        searchPlaceholder="Tìm mã KH, tên, MST, email, SĐT..."
+        emptyTitle="Chưa có khách hàng"
+        density="dense"
+        defaultLength={50}
+        apiRef={tableRef}
+        rail={{ statuses: RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter, labels: STATUS_LABELS }}
         actions={canEdit && <Button variant="primary" icon={<Plus />} onClick={() => setShowCreate(true)}>Thêm mới</Button>}
-      />
-
-      <div className="flex flex-1 min-h-0 gap-4">
-        {/* Table column */}
-        <Card className={clsx('flex-1 min-w-0 flex flex-col', panelOpen && 'hidden lg:flex')}>
-          {/* Toolbar */}
-          <div className="toolbar">
-            <SearchBox value={searchInput} onChange={setSearchInput} placeholder="Tìm mã KH, tên, MST, email, SĐT..." width={320} />
-            <FilterSelect value={statusFilter} onChange={setStatusFilter} aria-label="Lọc theo trạng thái">
-              <option value="">Tất cả TT</option>
-              <option value="ACTIVE">Hoạt động</option>
-              <option value="INACTIVE">Ngừng HĐ</option>
-            </FilterSelect>
-            <div className="toolbar-spacer" />
-            <div className="flex flex-wrap items-center gap-2" style={{ fontSize: 12, color: 'var(--muted)' }}>
-              <span className="tabular-nums">
-                {table.recordsFiltered.toLocaleString('vi-VN')} khách hàng
-                {table.recordsTotal !== table.recordsFiltered && (
-                  <span style={{ color: 'var(--faint)' }}> / {table.recordsTotal.toLocaleString('vi-VN')}</span>
-                )}
-              </span>
-              {table.statusStats.map((s) => {
-                const isActive = statusFilter === s.status;
-                return (
-                  <button
-                    key={s.status}
-                    type="button"
-                    onClick={() => handleStatusStatClick(s.status)}
-                    aria-pressed={isActive}
-                    className="rounded-full"
-                    style={isActive ? { boxShadow: '0 0 0 2px var(--accent)' } : undefined}
-                  >
-                    <StatusPill status={s.status} label={`${STATUS_LABELS[s.status] ?? s.status}: ${s.count}`} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {table.error && (
-            <div style={{ padding: '12px 16px 0' }}>
-              <Alert tone="error">
-                <div className="flex items-center gap-2">
-                  <span className="flex-1">{table.error}</span>
-                  <Button size="xs" icon={<RefreshCw />} onClick={table.reload}>Thử lại</Button>
-                </div>
-              </Alert>
-            </div>
-          )}
-
-          {/* Desktop table */}
-          <div className="hidden md:block flex-1 min-h-0 overflow-auto">
-            <table className="tbl tbl-hover tbl-click">
-              <thead>
-                <tr>
-                  {TABLE_COLUMNS.map((col) => {
-                    const sortable = col.sortIndex !== undefined;
-                    const isSorted = sortable && table.orderCol === col.sortIndex;
-                    return (
-                      <th
-                        key={col.key}
-                        className={clsx(sortable && 'sortable', col.className)}
-                        aria-sort={isSorted ? (table.orderDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                        tabIndex={sortable ? 0 : undefined}
-                        onClick={() => sortable && table.setSort(col.sortIndex!)}
-                        onKeyDown={sortable ? (e) => handleSortKey(e, col.sortIndex!) : undefined}
-                      >
-                        <span className="th-inner">{col.label}</span>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {showInitialLoading ? (
-                  <tr><td colSpan={TABLE_COLUMNS.length} className="tbl-empty">
-                    <span className="inline-flex items-center gap-2"><Spinner size={16} />Đang tải…</span>
-                  </td></tr>
-                ) : showEmpty ? (
-                  <tr><td colSpan={TABLE_COLUMNS.length} style={{ padding: 0 }}>
-                    <EmptyState compact title="Chưa có dữ liệu" />
-                  </td></tr>
-                ) : (
-                  table.data.map((row, idx) => {
-                    const isSelected = selectedId === row.id;
-                    return (
-                      <tr
-                        key={row.id}
-                        onClick={() => handleRowClick(row)}
-                        tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) handleRowClick(row); }}
-                        className={clsx(isSelected && 'is-selected')}
-                        aria-selected={isSelected || undefined}
-                        style={table.loading ? { opacity: 0.6 } : undefined}
-                      >
-                        <td className="center tabular-nums" style={{ color: 'var(--faint)' }}>{table.start + idx + 1}</td>
-                        <td><span className="code">{row.code}</span></td>
-                        <td><span className="cell-title">{row.name}</span></td>
-                        <td className="hidden md:table-cell">{row.taxCode || '—'}</td>
-                        <td className="hidden xl:table-cell" style={{ color: 'var(--muted)', fontSize: 12.5 }} title={row.address || ''}>
-                          {row.address ? (row.address.length > 40 ? row.address.slice(0, 40) + '…' : row.address) : '—'}
-                        </td>
-                        <td className="hidden lg:table-cell">{row.contactPerson || '—'}</td>
-                        <td className="hidden md:table-cell">{row.phone || '—'}</td>
-                        <td><CustomerStatus status={row.status} /></td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile card list */}
-          <div className="md:hidden flex-1 min-h-0 overflow-auto flex flex-col gap-2" style={{ padding: 12 }}>
-            {showInitialLoading ? (
-              <LoadingBlock />
-            ) : showEmpty ? (
-              <EmptyState compact title="Chưa có dữ liệu" />
-            ) : (
-              table.data.map((row) => {
-                const isSelected = selectedId === row.id;
-                return (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => handleRowClick(row)}
-                    className={clsx('w-full text-left border border-line rounded-lg p-3', isSelected ? 'bg-brand-soft' : 'bg-surface')}
-                    style={isSelected ? { borderColor: 'var(--accent)' } : undefined}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="code">{row.code}</span>
-                      <CustomerStatus status={row.status} />
-                    </div>
-                    <div className="cell-title">{row.name}</div>
-                    <div className="cell-sub">{[row.phone, row.email].filter(Boolean).join(' · ') || '—'}</div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {/* Pagination */}
-          <div className="foot">
-            <span className="tabular-nums">
-              {table.recordsFiltered > 0
-                ? `${(table.start + 1).toLocaleString('vi-VN')}–${Math.min(table.start + table.length, table.recordsFiltered).toLocaleString('vi-VN')} / ${table.recordsFiltered.toLocaleString('vi-VN')}`
-                : '0 bản ghi'}
-            </span>
-            {table.loading && <Spinner size={14} />}
-            <div className="pager">
-              <button type="button" onClick={() => table.setPage(table.currentPage - 1)} disabled={table.currentPage <= 1} aria-label="Trang trước">
-                <ChevronLeft />
-              </button>
-              <button type="button" aria-current="page">{table.currentPage}</button>
-              <button type="button" onClick={() => table.setPage(table.currentPage + 1)} disabled={table.currentPage >= table.totalPages} aria-label="Trang sau">
-                <ChevronRight />
-              </button>
-            </div>
-            <span style={{ fontSize: 12, color: 'var(--muted-2)' }}>/ {table.totalPages || 1} trang</span>
-          </div>
-        </Card>
-
-        {/* Panel: inline on ≥lg, overlay on <lg */}
-        {panelOpen && isLg && (
+        selectedKey={selectedId}
+        onRowClick={handleRowClick}
+        aside={panelOpen && isLg ? (
           <aside className="card flex flex-col shrink-0 relative" style={{ width: panelWidth }}>
             {/* Drag handle */}
             <div
@@ -458,15 +282,15 @@ export function CustomerListPage() {
             </div>
             <DetailPanel {...panelProps} inlineMode>{panelContent}</DetailPanel>
           </aside>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {!isLg && panelOpen && <DetailPanel {...panelProps}>{panelContent}</DetailPanel>}
 
       {/* Create Modal */}
       {showCreate && (
         <CreateCustomerModal
-          onSuccess={() => { setShowCreate(false); table.reload(); }}
+          onSuccess={() => { setShowCreate(false); reload(); }}
           onCancel={() => setShowCreate(false)}
         />
       )}

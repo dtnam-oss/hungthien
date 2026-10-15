@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { DataTable } from '../../shared/components/DataTable';
-import type { Column } from '../../shared/components/DataTable';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
 import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS } from '../../shared/components/FieldRow';
-import { Alert, Button, Card, Checkbox, Field, FilterSelect, FormGrid, Input, LoadingBlock, PageHeader, Pill, Select, StatusPill, SubCard } from '../../shared/ui';
+import { Alert, Button, Checkbox, Field, FormGrid, Input, LoadingBlock, PageHeader, Pill, Select, StatusPill, SubCard } from '../../shared/ui';
 import { errorMessage } from '../../shared/format';
 import { useAuth } from '../../shared/auth-context';
 import api from '../../shared/api';
@@ -40,9 +41,22 @@ type SetEditForm = (fn: (prev: EmployeeEditForm | null) => EmployeeEditForm | nu
 
 const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Đang làm', INACTIVE: 'Nghỉ việc', SUSPENDED: 'Tạm ngưng' };
 
+const RAIL_STATUSES = ['ACTIVE', 'SUSPENDED', 'INACTIVE'];
+const DRIVER_OPTIONS = [{ value: 'true', label: 'Tài xế' }, { value: 'false', label: 'Không phải TX' }];
+
 function EmployeeStatus({ status }: { status: string }) {
   return <StatusPill status={status} label={STATUS_LABELS[status]} />;
 }
+
+const COLUMNS: ServerDataColumn<Employee>[] = [
+  { key: 'code', label: 'Mã NV', sortIndex: 0, width: 110, className: 'whitespace-nowrap', render: (row) => <span className="code">{row.code}</span> },
+  { key: 'fullName', label: 'Họ tên', sortIndex: 1, className: 'whitespace-nowrap', render: (row) => <span className="cell-title">{row.fullName}</span> },
+  { key: 'phone', label: 'Số ĐT', sortIndex: 2, hideBelow: 'md', className: 'whitespace-nowrap' },
+  { key: 'position', label: 'Chức danh', sortIndex: 3, hideBelow: 'lg' },
+  { key: 'department', label: 'Phòng ban', sortIndex: 4, hideBelow: 'lg' },
+  { key: 'isDriver', label: 'TX', align: 'center', width: 64, render: (row) => row.isDriver ? <Pill tone="info" size="sm">TX</Pill> : null },
+  { key: 'status', label: 'Trạng thái', sortIndex: 5, width: 120, render: (row) => <EmployeeStatus status={row.status} /> },
+];
 
 /* ── Main ──────────────────────────────────────────────────────────── */
 
@@ -50,10 +64,24 @@ export function EmployeeListPage() {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission('employee', 'canEdit');
   const canDelete = hasPermission('employee', 'canDelete');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [driverFilter, setDriverFilter] = useState('');
-  const [reloadKey, setReloadKey] = useState(0);
-  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [driverFilter, setDriverFilter] = useState<string[]>([]);
+  const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
+  const tableRef = useRef<ServerDataTableApi>(null);
+
+  // Phòng ban là chuỗi tự do: lấy danh sách giá trị đang có để lọc
+  const [departments, setDepartments] = useState<string[]>([]);
+  const loadDepartments = useCallback(() => {
+    api.get('/employees/dt', { params: { length: 500 } })
+      .then((r) => {
+        const set = new Set<string>();
+        for (const row of r.data.data as Employee[]) if (row.department?.trim()) set.add(row.department.trim());
+        setDepartments([...set].sort((a, b) => a.localeCompare(b, 'vi')));
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => { loadDepartments(); }, [loadDepartments]);
+  const reload = useCallback(() => { tableRef.current?.reload(); loadDepartments(); }, [loadDepartments]);
 
   // Detail panel
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -145,25 +173,12 @@ export function EmployeeListPage() {
   }, [detail, editForm, loadDetail, reload]);
 
   /* ── Columns ─────────────────────────────────────────────────────── */
-  const columns: Column<Employee>[] = [
-    { key: 'code', label: 'Mã NV', sortable: true, className: 'w-24', render: (row) => <span className="code">{row.code}</span> },
-    { key: 'fullName', label: 'Họ tên', sortable: true, render: (row) => <span className="cell-title">{row.fullName}</span> },
-    { key: 'phone', label: 'Số ĐT', className: 'hidden md:table-cell' },
-    { key: 'position', label: 'Chức danh', sortable: true, className: 'hidden lg:table-cell' },
-    { key: 'department', label: 'Phòng ban', sortable: true, className: 'hidden lg:table-cell' },
-    {
-      key: 'isDriver', label: 'Tài xế', className: 'w-20', align: 'center',
-      render: (row) => row.isDriver ? <Pill tone="info" size="sm">TX</Pill> : null,
-    },
-    {
-      key: 'status', label: 'Trạng thái', className: 'w-28',
-      render: (row) => <EmployeeStatus status={row.status} />,
-    },
-  ];
-
-  const filters: Record<string, string | undefined> = {};
-  if (statusFilter) filters.status = statusFilter;
-  if (driverFilter) filters.isDriver = driverFilter;
+  const filters = useMemo(() => ({
+    status: statusFilter,
+    isDriver: driverFilter,
+    department: departmentFilter,
+  }), [statusFilter, driverFilter, departmentFilter]);
+  const departmentOptions = useMemo(() => departments.map((d) => ({ value: d, label: d })), [departments]);
 
   const panelProps = {
     isOpen: panelOpen,
@@ -185,43 +200,32 @@ export function EmployeeListPage() {
       <PageHeader
         title="Nhân viên"
         description="Quản lý danh sách nhân viên"
-        actions={canEdit && <Button variant="primary" icon={<Plus />} onClick={() => setShowCreate(true)}>Thêm nhân viên</Button>}
       />
 
-      <div className="flex flex-1 min-h-0 gap-4">
-        <Card className="flex-1 min-w-0 flex flex-col">
-          <DataTable<Employee>
-            key={reloadKey}
-            endpoint="/employees"
-            columns={columns}
-            searchPlaceholder="Tìm theo mã, tên, SĐT..."
-            filters={filters}
-            onRowClick={handleRowClick}
-            selectedKey={selectedId}
-            toolbar={
-              <>
-                <FilterSelect value={statusFilter} onChange={setStatusFilter} aria-label="Lọc theo trạng thái">
-                  <option value="">Tất cả trạng thái</option>
-                  <option value="ACTIVE">Đang làm</option>
-                  <option value="INACTIVE">Nghỉ việc</option>
-                  <option value="SUSPENDED">Tạm ngưng</option>
-                </FilterSelect>
-                <FilterSelect value={driverFilter} onChange={setDriverFilter} aria-label="Lọc tài xế">
-                  <option value="">Tất cả</option>
-                  <option value="true">Tài xế</option>
-                  <option value="false">Không phải TX</option>
-                </FilterSelect>
-              </>
-            }
-          />
-        </Card>
-
-        {panelOpen && isLg && (
+      <ServerDataTable<Employee>
+        endpoint="/employees/dt"
+        apiRef={tableRef}
+        columns={COLUMNS}
+        filters={filters}
+        density="dense"
+        searchPlaceholder="Tìm theo mã, tên, SĐT..."
+        emptyTitle="Chưa có nhân viên"
+        rail={{ statuses: RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter, labels: STATUS_LABELS }}
+        toolbar={
+          <>
+            <SearchableMultiSelect mode="multi" size="sm" value={driverFilter} onChange={setDriverFilter} options={DRIVER_OPTIONS} placeholder="Tài xế" aria-label="Lọc tài xế" />
+            <SearchableMultiSelect mode="multi" size="sm" value={departmentFilter} onChange={setDepartmentFilter} options={departmentOptions} placeholder="Phòng ban" aria-label="Lọc theo phòng ban" />
+          </>
+        }
+        actions={canEdit && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setShowCreate(true)}>Thêm nhân viên</Button>}
+        selectedKey={selectedId}
+        onRowClick={handleRowClick}
+        aside={panelOpen && isLg ? (
           <aside className="card flex flex-col shrink-0" style={{ width: 480 }}>
             <DetailPanel {...panelProps} inlineMode>{panelContent}</DetailPanel>
           </aside>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Mobile panel */}
       {panelOpen && !isLg && <DetailPanel {...panelProps}>{panelContent}</DetailPanel>}

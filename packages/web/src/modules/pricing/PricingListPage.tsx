@@ -1,17 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Layers } from 'lucide-react';
 import api from '../../shared/api';
 import { useAuth } from '../../shared/auth-context';
-import { DataTable } from '../../shared/components/DataTable';
-import type { Column } from '../../shared/components/DataTable';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { ServerDataColumn, ServerDataTableApi, ServerDataGroup } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
+import type { MultiSelectOption } from '../../shared/components/SearchableMultiSelect';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
 import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import { SearchableSelect } from '../../shared/components/SearchableSelect';
 import type { SearchableOption } from '../../shared/components/SearchableSelect';
 import {
-  PageHeader, Card, SubCard, Button, StatusPill, Alert, LoadingBlock, Field, FormGrid, Input, Select, Textarea,
+  PageHeader, SubCard, Button, StatusPill, Alert, LoadingBlock, Field, FormGrid, Input, Select, Textarea,
 } from '../../shared/ui';
 import { formatMoney, formatDate, todayInputDate, errorMessage } from '../../shared/format';
 
@@ -51,10 +53,40 @@ const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Đang áp dụng', INAC
 const TRIP_LABELS: Record<string, string> = { STANDARD: 'Tiêu chuẩn', EXPRESS: 'Nhanh', SPECIAL: 'Đặc biệt' };
 
 const TRIP_OPTIONS = Object.entries(TRIP_LABELS);
+const RAIL_STATUSES = ['ACTIVE', 'INACTIVE'];
+
+/* sortIndex = vị trí trong SORTABLE_COLUMNS của pricing-dt.service (customerName, routeName, tripType, unitPrice, validFrom, status) */
+const COLUMNS: ServerDataColumn<Pricing>[] = [
+  { key: 'Customer', sortIndex: 0, label: '', minWidth: 180,
+    render: (row) => <span className="cell-title">{row.Customer?.name || '—'}</span> },
+  { key: 'Route', sortIndex: 1, label: 'Tuyến', minWidth: 200, className: 'whitespace-nowrap',
+    render: (row) => row.Route
+      ? <span className="block truncate" style={{ maxWidth: 300 }} title={row.Route.name}><span className="code">{row.Route.code}</span> {row.Route.name}</span>
+      : '—' },
+  { key: 'tripType', sortIndex: 2, label: 'Loại', width: 110, className: 'whitespace-nowrap', hideBelow: 'md',
+    render: (row) => TRIP_LABELS[row.tripType] || row.tripType },
+  { key: 'unitPrice', sortIndex: 3, label: 'Đơn giá', width: 140, align: 'right', className: 'whitespace-nowrap',
+    render: (row) => <span className="money">{formatMoney(row.unitPrice)}</span> },
+  { key: 'validFrom', sortIndex: 4, label: 'Hiệu lực', width: 110, className: 'whitespace-nowrap', hideBelow: 'lg',
+    render: (row) => formatDate(row.validFrom) },
+  { key: 'status', sortIndex: 5, label: 'Trạng thái', width: 130, className: 'whitespace-nowrap',
+    render: (row) => <StatusPill status={row.status} label={STATUS_LABELS[row.status]} /> },
+];
+
+const groupByCustomer = (row: Pricing): ServerDataGroup => ({
+  key: String(row.customerId),
+  label: row.Customer?.name || '—',
+  meta: row.Customer?.code,
+});
 
 /* ── Component ─────────────────────────────────────────────────────── */
 
 export function PricingListPage({ priceType = 'CUSTOMER' }: { priceType?: 'CUSTOMER' | 'SUPPLIER' }) {
+  // key: đổi KH/NCC thì reset toàn bộ bộ lọc, sort, panel
+  return <PricingListInner key={priceType} priceType={priceType} />;
+}
+
+function PricingListInner({ priceType }: { priceType: 'CUSTOMER' | 'SUPPLIER' }) {
   const isCustomer = priceType === 'CUSTOMER';
   const pageTitle = isCustomer ? 'Giá KH' : 'Giá bán NCC';
   const pageDesc = isCustomer ? 'Giá nhận từ khách hàng' : 'Giá bán lại cho nhà thầu phụ';
@@ -63,8 +95,36 @@ export function PricingListPage({ priceType = 'CUSTOMER' }: { priceType?: 'CUSTO
   const canEdit = hasPermission('pricing', 'canEdit');
   const canDelete = hasPermission('pricing', 'canDelete');
 
-  const [reloadKey, setReloadKey] = useState(0);
-  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  const tableRef = useRef<ServerDataTableApi>(null);
+  const reload = useCallback(() => tableRef.current?.reload(), []);
+
+  // Rail trạng thái và select trong toolbar dùng chung một state
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [customerFilter, setCustomerFilter] = useState<number[]>([]);
+  const [routeFilter, setRouteFilter] = useState<number[]>([]);
+  const [grouped, setGrouped] = useState(false);
+  const filters = useMemo(() => ({
+    priceType,
+    status: statusFilter,
+    customerId: customerFilter,
+    routeId: routeFilter,
+  }), [priceType, statusFilter, customerFilter, routeFilter]);
+
+  const [customerOptions, setCustomerOptions] = useState<MultiSelectOption<number>[]>([]);
+  const [routeOptions, setRouteOptions] = useState<MultiSelectOption<number>[]>([]);
+  useEffect(() => {
+    api.get<{ data?: PartyRecord[] }>('/customers?pageSize=100').then((res) => {
+      setCustomerOptions((res.data.data || []).map((c) => ({ value: c.id, label: c.name, sublabel: c.code })));
+    }).catch(() => {});
+    api.get<{ data?: RouteRecord[] }>('/routes?pageSize=100').then((res) => {
+      setRouteOptions((res.data.data || []).map((r) => ({ value: r.id, label: `${r.code} - ${r.name}` })));
+    }).catch(() => {});
+  }, []);
+
+  const columns = useMemo(
+    () => COLUMNS.map((c) => (c.key === 'Customer' ? { ...c, label: isCustomer ? 'Khách hàng' : 'Nhà cung cấp' } : c)),
+    [isCustomer],
+  );
 
   // Responsive
   const [isLg, setIsLg] = useState(false);
@@ -156,36 +216,6 @@ export function PricingListPage({ priceType = 'CUSTOMER' }: { priceType?: 'CUSTO
     setSaving(false);
   }, [detail, editForm, loadDetail, reload]);
 
-  /* ── Columns ─────────────────────────────────────────────────────── */
-  const columns: Column<Pricing>[] = [
-    {
-      key: 'Customer', label: isCustomer ? 'Khách hàng' : 'Nhà cung cấp', sortable: true,
-      render: (row) => <span className="cell-title">{row.Customer?.name || '—'}</span>,
-    },
-    {
-      key: 'Route', label: 'Tuyến', sortable: true,
-      render: (row) => row.Route
-        ? <><span className="code">{row.Route.code}</span> {row.Route.name}</>
-        : '—',
-    },
-    {
-      key: 'tripType', label: 'Loại', className: 'w-28 whitespace-nowrap hidden md:table-cell',
-      render: (row) => TRIP_LABELS[row.tripType] || row.tripType,
-    },
-    {
-      key: 'unitPrice', label: 'Đơn giá', className: 'w-36', align: 'right',
-      render: (row) => <span className="money">{formatMoney(row.unitPrice)}</span>,
-    },
-    {
-      key: 'validFrom', label: 'Hiệu lực', className: 'w-28 hidden lg:table-cell',
-      render: (row) => formatDate(row.validFrom),
-    },
-    {
-      key: 'status', label: 'Trạng thái', className: 'w-36',
-      render: (row) => <StatusPill status={row.status} label={STATUS_LABELS[row.status]} />,
-    },
-  ];
-
   const panel = (inline: boolean) => (
     <DetailPanel
       isOpen={panelOpen}
@@ -256,33 +286,40 @@ export function PricingListPage({ priceType = 'CUSTOMER' }: { priceType?: 'CUSTO
   /* ── Render ──────────────────────────────────────────────────────── */
   return (
     <div className="page page-fill">
-      <PageHeader
-        title={pageTitle}
-        description={pageDesc}
+      <PageHeader title={pageTitle} description={pageDesc} />
+
+      <ServerDataTable<Pricing>
+        endpoint="/pricing/dt"
+        columns={columns}
+        filters={filters}
+        searchPlaceholder={isCustomer ? 'Tìm KH, tuyến...' : 'Tìm NCC, tuyến...'}
+        emptyTitle="Chưa có bảng giá"
+        density="dense"
+        apiRef={tableRef}
+        rail={{ statuses: RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter, labels: STATUS_LABELS }}
+        toolbar={
+          <>
+            <SearchableMultiSelect<number>
+              mode="multi" size="sm" options={customerOptions} value={customerFilter} onChange={setCustomerFilter}
+              placeholder={isCustomer ? 'Khách hàng' : 'Nhà cung cấp'} searchPlaceholder="Tìm..." aria-label="Lọc theo KH/NCC"
+            />
+            <SearchableMultiSelect<number>
+              mode="multi" size="sm" options={routeOptions} value={routeFilter} onChange={setRouteFilter}
+              placeholder="Tuyến" searchPlaceholder="Tìm tuyến..." aria-label="Lọc theo tuyến"
+            />
+            <Button size="sm" icon={<Layers />} aria-pressed={grouped} variant={grouped ? 'primary' : 'secondary'} onClick={() => setGrouped((g) => !g)}>Nhóm</Button>
+          </>
+        }
         actions={canEdit && <Button variant="primary" icon={<Plus />} onClick={() => setShowCreate(true)}>Thêm mới</Button>}
-      />
-
-      <div className="flex flex-1 min-h-0 gap-4">
-        <Card className="flex-1 min-w-0 flex flex-col">
-          <DataTable<Pricing>
-            key={`${priceType}-${reloadKey}`}
-            endpoint="/pricing"
-            columns={columns}
-            searchPlaceholder={isCustomer ? 'Tìm KH, tuyến...' : 'Tìm NCC, tuyến...'}
-            onRowClick={handleRowClick}
-            rowKey="id"
-            selectedKey={selectedId}
-            extraParams={{ priceType }}
-            emptyTitle="Chưa có bảng giá"
-          />
-        </Card>
-
-        {panelOpen && isLg && (
+        groupBy={grouped ? groupByCustomer : undefined}
+        selectedKey={selectedId}
+        onRowClick={handleRowClick}
+        aside={panelOpen && isLg ? (
           <aside className="card flex flex-col shrink-0" style={{ width: 480 }}>
             {panel(true)}
           </aside>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {panelOpen && !isLg && panel(false)}
 

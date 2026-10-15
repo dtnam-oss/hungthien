@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { Plus, Filter, Building2, MapPin, CreditCard, FileText, Truck } from 'lucide-react';
+import { Plus, Building2, MapPin, CreditCard, FileText, Truck } from 'lucide-react';
 import api from '../../shared/api';
 import { useAuth } from '../../shared/auth-context';
-import { DataTable } from '../../shared/components/DataTable';
-import type { Column } from '../../shared/components/DataTable';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
 import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import {
-  PageHeader, Card, SubCard, Button, StatusPill, Pill, FilterSelect,
+  PageHeader, SubCard, Button, StatusPill, Pill,
   Alert, LoadingBlock, Field, FormGrid, Input, Select, Textarea,
 } from '../../shared/ui';
 import { errorMessage } from '../../shared/format';
@@ -74,14 +74,47 @@ function SectionLabel({ icon, children }: { icon: ReactNode; children: ReactNode
   return <span className="inline-flex items-center gap-2">{icon}{children}</span>;
 }
 
+const RAIL_STATUSES = ['ACTIVE', 'SUSPENDED', 'INACTIVE'];
+
+const COLUMNS: ServerDataColumn<Supplier>[] = [
+  { key: 'code', label: 'Mã NCC', sortIndex: 0, width: 110, className: 'whitespace-nowrap', render: (row) => <span className="code">{row.code}</span> },
+  {
+    key: 'name', label: 'Tên nhà cung cấp', sortIndex: 1,
+    render: (row) => (
+      <>
+        <span className="cell-title">{row.name}</span>
+        {row.shortName && <span className="cell-sub" style={{ marginLeft: 8 }}>{row.shortName}</span>}
+      </>
+    ),
+  },
+  { key: 'taxCode', label: 'MST', sortIndex: 2, width: 130, hideBelow: 'md', className: 'whitespace-nowrap', render: (row) => <span className="code">{row.taxCode || '—'}</span> },
+  { key: 'phone', label: 'SĐT', sortIndex: 3, hideBelow: 'md', className: 'whitespace-nowrap', render: (row) => row.phone || '—' },
+  { key: 'contactPerson', label: 'Liên hệ', hideBelow: 'lg', render: (row) => row.contactPerson || '—' },
+  {
+    key: 'vehicleCount', label: 'Số xe', width: 96, hideBelow: 'md',
+    render: (row) => {
+      const count = row.vehicleCount ?? 0;
+      const over = row.maxVehicles !== null && row.maxVehicles !== undefined && count > row.maxVehicles;
+      return (
+        <Pill tone={over ? 'danger' : 'neutral'} size="sm">
+          <Truck style={{ width: 12, height: 12 }} />{count}/{row.maxVehicles ?? '∞'}
+        </Pill>
+      );
+    },
+  },
+  { key: 'status', label: 'Trạng thái', sortIndex: 4, width: 120, render: (row) => <StatusPill status={row.status} label={STATUS_LABELS[row.status]} /> },
+];
+
 export function SupplierListPage() {
   const { hasPermission } = useAuth();
   const canCreate = hasPermission('supplier', 'canEdit');
   const canEdit = hasPermission('supplier', 'canEdit');
   const canDelete = hasPermission('supplier', 'canDelete');
 
-  const [statusFilter, setStatusFilter] = useState<SupplierStatus | ''>('');
-  const [reloadKey, setReloadKey] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const tableRef = useRef<ServerDataTableApi>(null);
+  // Tăng khi dữ liệu NCC đổi để panel chi tiết tải lại
+  const [detailVersion, setDetailVersion] = useState(0);
 
   const [isLg, setIsLg] = useState(false);
   useEffect(() => {
@@ -105,7 +138,7 @@ export function SupplierListPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
-  const reloadTable = useCallback(() => setReloadKey((k) => k + 1), []);
+  const reloadTable = useCallback(() => { tableRef.current?.reload(); setDetailVersion((k) => k + 1); }, []);
 
   useEffect(() => {
     if (selectedId === null) {
@@ -127,7 +160,7 @@ export function SupplierListPage() {
         if (!isCancelled) setLoadingDetail(false);
       });
     return () => { isCancelled = true; };
-  }, [selectedId, reloadKey]);
+  }, [selectedId, detailVersion]);
 
   const handleToggleEdit = () => {
     if (isEditing) {
@@ -194,37 +227,6 @@ export function SupplierListPage() {
       setCreating(false);
     }
   };
-
-  const columns: Column<Supplier>[] = [
-    { key: 'code', label: 'Mã NCC', sortable: true, className: 'w-24', render: (row) => <span className="code">{row.code}</span> },
-    {
-      key: 'name', label: 'Tên nhà cung cấp', sortable: true,
-      render: (row) => (
-        <>
-          <div className="cell-title">{row.name}</div>
-          {row.shortName && <div className="cell-sub">{row.shortName}</div>}
-        </>
-      ),
-    },
-    { key: 'taxCode', label: 'MST', className: 'hidden md:table-cell w-32', render: (row) => <span className="code">{row.taxCode || '—'}</span> },
-    { key: 'phone', label: 'SĐT', className: 'hidden md:table-cell', render: (row) => row.phone || '—' },
-    { key: 'contactPerson', label: 'Liên hệ', className: 'hidden lg:table-cell', render: (row) => row.contactPerson || '—' },
-    {
-      key: 'vehicleCount',
-      label: 'Số xe',
-      className: 'hidden md:table-cell w-24',
-      render: (row) => {
-        const count = row.vehicleCount ?? 0;
-        const over = row.maxVehicles !== null && row.maxVehicles !== undefined && count > row.maxVehicles;
-        return (
-          <Pill tone={over ? 'danger' : 'neutral'} size="sm">
-            <Truck style={{ width: 12, height: 12 }} />{count}/{row.maxVehicles ?? '∞'}
-          </Pill>
-        );
-      },
-    },
-    { key: 'status', label: 'Trạng thái', className: 'w-28', render: (row) => <StatusPill status={row.status} label={STATUS_LABELS[row.status]} /> },
-  ];
 
   const renderPanel = (inline: boolean) => (
     <DetailPanel
@@ -310,6 +312,9 @@ export function SupplierListPage() {
     </DetailPanel>
   );
 
+  const filters = useMemo(() => ({ status: statusFilter }), [statusFilter]);
+  const handleRowClick = useCallback((row: Supplier) => setSelectedId(row.id), []);
+
   const createText = (key: TextKey, label: string, opts: { required?: boolean; type?: 'text' | 'email'; full?: boolean } = {}) => (
     <Field label={label} required={opts.required} full={opts.full}>
       <Input
@@ -326,35 +331,26 @@ export function SupplierListPage() {
       <PageHeader
         title="Nhà cung cấp"
         description="Quản lý nhà thầu phụ, thông tin liên hệ và ngân hàng."
-        actions={canCreate && <Button variant="primary" icon={<Plus />} onClick={() => setShowCreateModal(true)}>Thêm mới</Button>}
       />
 
-      <div className="flex flex-1 min-h-0 gap-4">
-        <Card className="flex-1 min-w-0 flex flex-col">
-          <DataTable<Supplier>
-            key={reloadKey}
-            endpoint="/suppliers"
-            columns={columns}
-            searchPlaceholder="Tìm nhà cung cấp..."
-            filters={{ status: statusFilter || undefined }}
-            onRowClick={(row) => setSelectedId(row.id)}
-            selectedKey={selectedId}
-            emptyTitle="Chưa có nhà cung cấp"
-            toolbar={
-              <FilterSelect icon={<Filter />} value={statusFilter} onChange={(v) => setStatusFilter(v as SupplierStatus | '')}>
-                <option value="">Tất cả trạng thái</option>
-                {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </FilterSelect>
-            }
-          />
-        </Card>
-
-        {selectedId !== null && isLg && (
+      <ServerDataTable<Supplier>
+        endpoint="/suppliers/dt"
+        apiRef={tableRef}
+        columns={COLUMNS}
+        filters={filters}
+        density="dense"
+        searchPlaceholder="Tìm nhà cung cấp..."
+        emptyTitle="Chưa có nhà cung cấp"
+        rail={{ statuses: RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter, labels: STATUS_LABELS }}
+        actions={canCreate && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setShowCreateModal(true)}>Thêm mới</Button>}
+        selectedKey={selectedId}
+        onRowClick={handleRowClick}
+        aside={selectedId !== null && isLg ? (
           <aside className="card flex flex-col shrink-0" style={{ width: 480 }}>
             {renderPanel(true)}
           </aside>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {selectedId !== null && !isLg && renderPanel(false)}
 

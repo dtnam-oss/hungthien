@@ -1,13 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { DataTable } from '../../shared/components/DataTable';
-import type { Column } from '../../shared/components/DataTable';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import type { DetailPanelTab } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
 import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import { SearchableSelect } from '../../shared/components/SearchableSelect';
-import { Alert, Button, Card, Field, FilterSelect, FormGrid, LoadingBlock, PageHeader, Pill, Plate, StatusPill, SubCard } from '../../shared/ui';
+import { Alert, Button, Checkbox, Field, FormGrid, LoadingBlock, PageHeader, Pill, Plate, StatusPill, SubCard } from '../../shared/ui';
 import type { PillTone } from '../../shared/ui';
 import { formatDate, formatMoney, errorMessage } from '../../shared/format';
 import { useAuth } from '../../shared/auth-context';
@@ -113,6 +114,24 @@ function OwnerPill({ ownerType }: { ownerType: string }) {
 
 const Dash = () => <span style={{ color: 'var(--faint)' }}>—</span>;
 
+const RAIL_STATUSES = ['ACTIVE', 'MAINTENANCE', 'INACTIVE', 'DISPOSED'];
+const TYPE_FILTER_OPTIONS = TYPE_OPTIONS.map((t) => ({ value: t, label: TYPE_LABELS[t] || t }));
+
+const COLUMNS: ServerDataColumn<Vehicle>[] = [
+  { key: 'plateNumber', label: 'Biển số', sortIndex: 0, width: 130, className: 'whitespace-nowrap', render: (row) => <Plate>{row.plateNumber}</Plate> },
+  { key: 'type', label: 'Loại xe', sortIndex: 1, hideBelow: 'md', className: 'whitespace-nowrap', render: (row) => TYPE_LABELS[row.type || ''] || row.type || <Dash /> },
+  { key: 'brand', label: 'Hãng', sortIndex: 2, hideBelow: 'lg', render: (row) => [row.brand, row.model].filter(Boolean).join(' ') || <Dash /> },
+  { key: 'tonnage', label: 'Tải (t)', sortIndex: 3, align: 'right', width: 80, hideBelow: 'lg', render: (row) => row.tonnage ? String(row.tonnage) : <Dash /> },
+  { key: 'ownerType', label: 'Sở hữu', sortIndex: 4, width: 96, render: (row) => <OwnerPill ownerType={row.ownerType} /> },
+  { key: 'primaryDriver', label: 'Tài xế 1', hideBelow: 'md', className: 'whitespace-nowrap', render: (row) => row.primaryDriver ? row.primaryDriver.fullName : <Dash /> },
+  { key: 'status', label: 'Trạng thái', sortIndex: 5, width: 120, render: (row) => <VehicleStatusPill status={row.status} /> },
+];
+
+function groupByBrandFn(row: Vehicle) {
+  const brand = row.brand?.trim();
+  return { key: brand || '__none', label: brand || 'Chưa có hãng' };
+}
+
 /* ── Main ──────────────────────────────────────────────────────────── */
 
 export function VehicleListPage() {
@@ -120,10 +139,13 @@ export function VehicleListPage() {
   const canEdit = hasPermission('vehicle', 'canEdit');
   const canDelete = hasPermission('vehicle', 'canDelete');
   const canViewFinance = canViewColumn('vehicle', 'purchasePrice');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [ownerTypeFilter, setOwnerTypeFilter] = useState('');
-  const [reloadKey, setReloadKey] = useState(0);
-  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [ownerTypeFilter, setOwnerTypeFilter] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [driverFilter, setDriverFilter] = useState<number[]>([]);
+  const [groupByBrand, setGroupByBrand] = useState(true);
+  const tableRef = useRef<ServerDataTableApi>(null);
+  const reload = useCallback(() => tableRef.current?.reload(), []);
 
   // Detail
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -229,22 +251,15 @@ export function VehicleListPage() {
   }, [detail, editForm, loadDetail, reload]);
 
   /* ── Columns ─────────────────────────────────────────────────────── */
-  const columns: Column<Vehicle>[] = [
-    { key: 'plateNumber', label: 'Biển số', sortable: true, className: 'w-32', render: (row) => <Plate>{row.plateNumber}</Plate> },
-    { key: 'type', label: 'Loại xe', sortable: true, className: 'hidden md:table-cell', render: (row) => TYPE_LABELS[row.type || ''] || row.type || '' },
-    { key: 'brand', label: 'Hãng', className: 'hidden lg:table-cell', render: (row) => [row.brand, row.model].filter(Boolean).join(' ') || '' },
-    { key: 'tonnage', label: 'Tải (T)', className: 'hidden lg:table-cell w-20', align: 'right', render: (row) => row.tonnage ? `${row.tonnage}T` : '' },
-    { key: 'Supplier', label: 'NCC', className: 'hidden lg:table-cell', render: (row) => row.Supplier?.name || <Dash /> },
-    { key: 'ownerType', label: 'Sở hữu', className: 'w-24', render: (row) => <OwnerPill ownerType={row.ownerType} /> },
-    { key: 'primaryDriver', label: 'Tài xế chính', className: 'hidden md:table-cell', render: (row) => row.primaryDriver ? row.primaryDriver.fullName : <Dash /> },
-    { key: 'status', label: 'Trạng thái', className: 'w-32', render: (row) => <VehicleStatusPill status={row.status} /> },
-  ];
-
-  const filters: Record<string, string | undefined> = {};
-  if (statusFilter) filters.status = statusFilter;
-  if (ownerTypeFilter) filters.ownerType = ownerTypeFilter;
+  const filters = useMemo(() => ({
+    status: statusFilter,
+    ownerType: ownerTypeFilter,
+    vehicleType: typeFilter,
+    primaryDriverId: driverFilter,
+  }), [statusFilter, ownerTypeFilter, typeFilter, driverFilter]);
 
   const driverOptions: DriverOption[] = drivers.map((d) => ({ value: String(d.id), label: `${d.code} — ${d.fullName}` }));
+  const driverFilterOptions = useMemo(() => drivers.map((d) => ({ value: d.id, label: d.fullName, sublabel: d.code })), [drivers]);
 
   const visibleTabs = canViewFinance ? PANEL_TABS : PANEL_TABS.filter((t) => t.key !== 'finance');
 
@@ -268,45 +283,35 @@ export function VehicleListPage() {
       <PageHeader
         title="Phương tiện"
         description="Quản lý danh sách xe"
-        actions={canEdit && <Button variant="primary" icon={<Plus />} onClick={() => setShowCreate(true)}>Thêm xe</Button>}
       />
 
-      <div className="flex flex-1 min-h-0 gap-4">
-        <Card className="flex-1 min-w-0 flex flex-col">
-          <DataTable<Vehicle>
-            key={reloadKey}
-            endpoint="/vehicles"
-            columns={columns}
-            searchPlaceholder="Tìm theo biển số, hãng xe..."
-            filters={filters}
-            onRowClick={handleRowClick}
-            selectedKey={selectedId}
-            emptyTitle="Chưa có phương tiện"
-            toolbar={
-              <>
-                <FilterSelect value={statusFilter} onChange={setStatusFilter} aria-label="Lọc theo trạng thái">
-                  <option value="">Tất cả trạng thái</option>
-                  <option value="ACTIVE">Hoạt động</option>
-                  <option value="INACTIVE">Ngừng</option>
-                  <option value="MAINTENANCE">Bảo trì</option>
-                  <option value="DISPOSED">Thanh lý</option>
-                </FilterSelect>
-                <FilterSelect value={ownerTypeFilter} onChange={setOwnerTypeFilter} aria-label="Lọc theo sở hữu">
-                  <option value="">Tất cả loại</option>
-                  <option value="INTERNAL">Nội bộ</option>
-                  <option value="EXTERNAL">Ngoài</option>
-                </FilterSelect>
-              </>
-            }
-          />
-        </Card>
-
-        {panelOpen && isLg && (
+      <ServerDataTable<Vehicle>
+        endpoint="/vehicles/dt"
+        apiRef={tableRef}
+        columns={COLUMNS}
+        filters={filters}
+        density="dense"
+        searchPlaceholder="Tìm theo biển số, hãng xe, tài xế..."
+        emptyTitle="Chưa có phương tiện"
+        rail={{ statuses: RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter, labels: STATUS_LABELS }}
+        toolbar={
+          <>
+            <SearchableMultiSelect mode="multi" size="sm" value={ownerTypeFilter} onChange={setOwnerTypeFilter} options={OWNER_OPTIONS} placeholder="Sở hữu" aria-label="Lọc theo sở hữu" />
+            <SearchableMultiSelect mode="multi" size="sm" value={typeFilter} onChange={setTypeFilter} options={TYPE_FILTER_OPTIONS} placeholder="Loại" aria-label="Lọc theo loại xe" />
+            <SearchableMultiSelect mode="multi" size="sm" value={driverFilter} onChange={setDriverFilter} options={driverFilterOptions} placeholder="Tài xế" searchPlaceholder="Tìm tài xế..." aria-label="Lọc theo tài xế" />
+            <Checkbox label="Nhóm theo hãng" checked={groupByBrand} onChange={(e) => setGroupByBrand(e.target.checked)} />
+          </>
+        }
+        actions={canEdit && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setShowCreate(true)}>Thêm xe</Button>}
+        groupBy={groupByBrand ? groupByBrandFn : undefined}
+        selectedKey={selectedId}
+        onRowClick={handleRowClick}
+        aside={panelOpen && isLg ? (
           <aside className="card flex flex-col shrink-0" style={{ width: 480 }}>
             {renderPanel(true)}
           </aside>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {panelOpen && !isLg && renderPanel(false)}
 
