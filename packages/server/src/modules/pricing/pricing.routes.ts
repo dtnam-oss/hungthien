@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../prisma.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requirePermission } from '../../middleware/rbac.js';
+import { requirePermission, stripHiddenColumns } from '../../middleware/rbac.js';
 import { PricingService } from './pricing.service.js';
 import { parseDTParams, multiParam, multiIntParam } from '../../shared/index.js';
 import { PricingDTService } from './pricing-dt.service.js';
@@ -16,12 +16,14 @@ router.use(requireAuth);
 router.get('/dt', requirePermission('pricing', 'canView'), async (req, res, next) => {
   try {
     const params = parseDTParams(req.query);
-    res.json(await dtService.query(params, {
+    const result = await dtService.query(params, {
       priceType: multiParam(req.query, 'priceType'),
       status: multiParam(req.query, 'status'),
       customerId: multiIntParam(req.query, 'customerId'),
       routeId: multiIntParam(req.query, 'routeId'),
-    }));
+    });
+    const data = await stripHiddenColumns(req.user, 'pricing', result.data as unknown as Record<string, unknown>[]);
+    res.json({ ...result, data });
   } catch (err) { next(err); }
 });
 

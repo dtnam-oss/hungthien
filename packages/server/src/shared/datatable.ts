@@ -66,21 +66,27 @@ export function sortColumn<C extends string>(columns: readonly C[], orderCol: nu
   return orderCol >= 0 && orderCol < columns.length ? columns[orderCol] : undefined;
 }
 
+/** Giới hạn số giá trị một bộ lọc nhận (tránh IN quá dài) */
+const MAX_MULTI_VALUES = 100;
+/** Int32 của Postgres */
+const INT32_MAX = 2_147_483_647;
+
 /** "A,B" | ["A","B"] | "A" | undefined → string[] | undefined (empty → undefined). */
 export function parseMulti(value: unknown): string[] | undefined {
   const raw = Array.isArray(value) ? value : [value];
-  const out: string[] = [];
+  const out = new Set<string>();
   for (const item of raw) {
     if (Array.isArray(item)) {
-      out.push(...(parseMulti(item) ?? []));
+      for (const v of parseMulti(item) ?? []) out.add(v);
     } else if (typeof item === 'string' || typeof item === 'number') {
       for (const part of String(item).split(',')) {
         const v = part.trim();
-        if (v && !out.includes(v)) out.push(v);
+        if (v) out.add(v);
       }
     }
+    if (out.size >= MAX_MULTI_VALUES) break; // chặn URL bất thường
   }
-  return out.length > 0 ? out : undefined;
+  return out.size > 0 ? Array.from(out).slice(0, MAX_MULTI_VALUES) : undefined;
 }
 
 /** Read a multi-value filter from a query object, accepting `key` and `key[]`. */
@@ -92,7 +98,7 @@ export function multiParam(query: Query, key: string): string[] | undefined {
 export function multiIntParam(query: Query, key: string): number[] | undefined {
   const ints = (multiParam(query, key) ?? [])
     .map((v) => Number(v))
-    .filter((n) => Number.isInteger(n));
+    .filter((n) => Number.isInteger(n) && Math.abs(n) <= INT32_MAX); // ngoài int32 → Prisma ném lỗi 500
   return ints.length > 0 ? ints : undefined;
 }
 

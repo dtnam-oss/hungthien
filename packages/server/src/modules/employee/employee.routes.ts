@@ -6,7 +6,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../../prisma.js';
 import { EmployeeService } from './employee.service.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requirePermission, stripHiddenColumns } from '../../middleware/rbac.js';
+import { requirePermission, stripHiddenColumns, getHiddenColumns } from '../../middleware/rbac.js';
 import { parsePagination, paginatedResponse } from '../../shared/index.js';
 import { parseDTParams, multiParam, multiBoolParam } from '../../shared/index.js';
 import { EmployeeDTService } from './employee-dt.service.js';
@@ -24,11 +24,13 @@ router.use(requireAuth);
 router.get('/dt', requirePermission('employee', 'canView'), async (req: Request, res: Response, next) => {
   try {
     const params = parseDTParams(req.query);
+    // Cột bị ẩn theo vai trò không được dùng để tìm, sắp xếp hay lọc (tránh suy ra giá trị)
+    const hidden = req.user && req.user.roleName !== 'admin' ? await getHiddenColumns(req.user.roleId, 'employee') : null;
     const result = await dtService.query(params, {
       status: multiParam(req.query, 'status'),
       isDriver: multiBoolParam(req.query, 'isDriver'),
-      department: multiParam(req.query, 'department'),
-    });
+      department: hidden?.has('department') ? undefined : multiParam(req.query, 'department'),
+    }, hidden ?? undefined);
     const data = await stripHiddenColumns(req.user, 'employee', result.data as unknown as Record<string, unknown>[]);
     res.json({ ...result, data });
   } catch (err) { next(err); }

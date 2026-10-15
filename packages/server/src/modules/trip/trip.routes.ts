@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../prisma.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requirePermission } from '../../middleware/rbac.js';
+import { requirePermission, stripHiddenColumns } from '../../middleware/rbac.js';
 import { TripService } from './trip.service.js';
 import { TripsDTService } from './trips-dt.service.js';
 import type { DTParams } from './trips-dt.service.js';
@@ -14,19 +14,24 @@ const dtService = new TripsDTService(prisma);
 router.use(requireAuth);
 
 // DataTables server-side endpoint
+// Chỉ nhận yyyy-mm-dd; giá trị khác bị bỏ (tránh Invalid Date → 500)
+const isoDate = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
+
 router.get('/dt', requirePermission('trip', 'canView'), async (req, res, next) => {
   try {
     const params: DTParams = {
       ...parseDTParams(req.query, { defaultLength: 100, defaultDir: 'desc' }),
       customerId: req.query.customerId ? Number(req.query.customerId) : undefined,
-      dateFrom: req.query.dateFrom as string | undefined,
-      dateTo: req.query.dateTo as string | undefined,
+      dateFrom: isoDate(req.query.dateFrom),
+      dateTo: isoDate(req.query.dateTo),
       driverId: req.query.driverId ? Number(req.query.driverId) : undefined,
       supplierId: req.query.supplierId ? Number(req.query.supplierId) : undefined,
       status: multiParam(req.query, 'status'),
     };
     const result = await dtService.query(params);
-    res.json(result);
+    // Áp quyền cột (ví dụ ẩn doanh thu với điều độ) như các route list khác
+    const data = await stripHiddenColumns(req.user, 'trip', result.data as unknown as Record<string, unknown>[]);
+    res.json({ ...result, data });
   } catch (err) { next(err); }
 });
 

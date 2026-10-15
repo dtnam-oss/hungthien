@@ -3,7 +3,7 @@ import { prisma } from '../../prisma.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { TripPlanService } from './trip-plan.service.js';
-import { parseDTParams, multiBoolParam, multiIntParam } from '../../shared/index.js';
+import { parseDTParams, multiBoolParam, multiIntParam, multiParam } from '../../shared/index.js';
 import { TripPlanDTService } from './trip-plan-dt.service.js';
 const dtService = new TripPlanDTService(prisma);
 
@@ -16,8 +16,13 @@ router.use(requireAuth);
 router.get('/dt', requirePermission('trip', 'canView'), async (req, res, next) => {
   try {
     const params = parseDTParams(req.query);
+    // Rail trạng thái gửi status=ACTIVE,INACTIVE; map về isActive (chọn cả hai → không lọc)
+    const statusFilter = multiParam(req.query, 'status');
+    const isActiveFromStatus: boolean[] | undefined = statusFilter
+      ? (() => { const v = [...new Set(statusFilter.map((x) => x.toUpperCase() === 'ACTIVE'))]; return v.length === 1 ? v : undefined; })()
+      : undefined;
     res.json(await dtService.query(params, {
-      isActive: multiBoolParam(req.query, 'isActive'),
+      isActive: multiBoolParam(req.query, 'isActive') ?? isActiveFromStatus,
       customerId: multiIntParam(req.query, 'customerId'),
       vehicleId: multiIntParam(req.query, 'vehicleId'),
       driverId: multiIntParam(req.query, 'driverId'),

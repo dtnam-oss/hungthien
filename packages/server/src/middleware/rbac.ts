@@ -54,7 +54,7 @@ export function requirePermission(module: string, level: PermissionLevel) {
  * Get the list of columns a role can view for a module.
  * Returns null if role has no column restrictions (can see everything).
  */
-async function getHiddenColumns(roleId: number, module: string): Promise<Set<string> | null> {
+export async function getHiddenColumns(roleId: number, module: string): Promise<Set<string> | null> {
   // Admin sees everything
   const columnPerms = await prisma.columnPermission.findMany({
     where: { roleId, module },

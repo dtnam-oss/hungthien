@@ -61,8 +61,9 @@ export function useServerTable<T>(params: UseServerTableParams): UseServerTableR
   const [start, setStart] = useState(0);
   const [length, setLengthState] = useState(defaultLength);
   const [search, setSearchState] = useState('');
-  const [orderCol, setOrderCol] = useState(0);
-  const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('desc');
+  // -1 = chưa chọn cột sort → không gửi order[0]*, server dùng sort mặc định của module
+  const [orderCol, setOrderCol] = useState(-1);
+  const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('asc');
   const [drawCounter, setDrawCounter] = useState(1);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -93,9 +94,11 @@ export function useServerTable<T>(params: UseServerTableParams): UseServerTableR
         start,
         length,
         'search[value]': search,
-        'order[0][column]': orderCol,
-        'order[0][dir]': orderDir,
       };
+      if (orderCol >= 0) {
+        queryParams['order[0][column]'] = orderCol;
+        queryParams['order[0][dir]'] = orderDir;
+      }
       for (const [key, value] of Object.entries(parsedFilters)) {
         if (Array.isArray(value)) {
           if (value.length > 0) queryParams[key] = value.join(',');
@@ -111,6 +114,11 @@ export function useServerTable<T>(params: UseServerTableParams): UseServerTableR
 
       // Only apply if this is still the current request
       if (!controller.signal.aborted) {
+        // Trang hiện tại vượt quá tổng (sau khi xóa/lọc) → lùi về trang cuối còn dữ liệu
+        if (start > 0 && res.data.recordsFiltered <= start) {
+          setStart(Math.max(0, Math.floor((res.data.recordsFiltered - 1) / length) * length));
+          return;
+        }
         setData(res.data.data);
         setRecordsTotal(res.data.recordsTotal);
         setRecordsFiltered(res.data.recordsFiltered);
