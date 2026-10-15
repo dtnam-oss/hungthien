@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+.prisma/
+# Dữ liệu nội bộ ở thư mục gốc (không version)
+/*.xlsx
+/*.lnk
+# Build/cache
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# Backup DB cục bộ
+backups/

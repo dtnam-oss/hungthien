@@ -1,0 +1,506 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String   @db.VarChar(20)
+  tableName String   @db.VarChar(100)
+  recordId  Int
+  oldValues Json?
+  newValues Json?
+  ipAddress String?  @db.VarChar(50)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt], map: "idx_audit_createdAt")
+  @@index([tableName, recordId], map: "idx_audit_tableName_recordId")
+}
+
+model ColumnPermission {
+  id      Int     @id @default(autoincrement())
+  roleId  Int
+  module  String  @db.VarChar(50)
+  column  String  @db.VarChar(100)
+  canView Boolean @default(false)
+  canEdit Boolean @default(false)
+  Role    Role    @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([roleId, module, column])
+  @@index([roleId], map: "idx_column_perm_roleId")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Employee {
+  id                                            Int                @id @default(autoincrement())
+  code                                          String             @unique @db.VarChar(50)
+  fullName                                      String             @db.VarChar(200)
+  phone                                         String?            @db.VarChar(20)
+  position                                      String?            @db.VarChar(100)
+  department                                    String?            @db.VarChar(100)
+  isDriver                                      Boolean            @default(false)
+  status                                        String             @default("ACTIVE") @db.VarChar(20)
+  joinDate                                      DateTime?          @db.Date
+  version                                       Int                @default(1)
+  createdAt                                     DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt                                     DateTime           @default(now()) @db.Timestamptz(6)
+  regionId                                      Int?
+  salaryType                                    String             @default("PER_TRIP") @db.VarChar(20)
+  baseSalary                                    Decimal?           @default(0) @db.Decimal(18, 2)
+  AccountingPeriod                              AccountingPeriod[]
+  Region                                        Region?            @relation(fields: [regionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  PayrollEntry                                  PayrollEntry[]
+  Trip_Trip_lastEditedByIdToEmployee            Trip[]             @relation("Trip_lastEditedByIdToEmployee")
+  Trip_Trip_primaryDriverIdToEmployee           Trip[]             @relation("Trip_primaryDriverIdToEmployee")
+  Trip_Trip_secondaryDriverIdToEmployee         Trip[]             @relation("Trip_secondaryDriverIdToEmployee")
+  TripPlan_TripPlan_primaryDriverIdToEmployee   TripPlan[]         @relation("TripPlan_primaryDriverIdToEmployee")
+  TripPlan_TripPlan_secondaryDriverIdToEmployee TripPlan[]         @relation("TripPlan_secondaryDriverIdToEmployee")
+  User                                          User?
+  Vehicle_Vehicle_primaryDriverIdToEmployee     Vehicle[]          @relation("Vehicle_primaryDriverIdToEmployee")
+  Vehicle_Vehicle_secondaryDriverIdToEmployee   Vehicle[]          @relation("Vehicle_secondaryDriverIdToEmployee")
+
+  @@index([code], map: "idx_employee_code")
+  @@index([isDriver], map: "idx_employee_isDriver")
+  @@index([status], map: "idx_employee_status")
+  @@index([regionId], map: "idx_employee_regionid")
+}
+
+model ModulePermission {
+  id        Int     @id @default(autoincrement())
+  roleId    Int
+  module    String  @db.VarChar(50)
+  canView   Boolean @default(false)
+  canEdit   Boolean @default(false)
+  canDelete Boolean @default(false)
+  Role      Role    @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([roleId, module])
+  @@index([roleId], map: "idx_module_perm_roleId")
+}
+
+model Role {
+  id               Int                @id @default(autoincrement())
+  name             String             @unique @db.VarChar(100)
+  description      String?            @db.VarChar(500)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime           @default(now()) @db.Timestamptz(6)
+  ColumnPermission ColumnPermission[]
+  ModulePermission ModulePermission[]
+  User             User[]
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(100)
+  passwordHash String    @db.VarChar(500)
+  roleId       Int
+  employeeId   Int?      @unique
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime? @db.Timestamptz(6)
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @db.Timestamptz(6)
+  Employee     Employee? @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Role         Role      @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId], map: "idx_user_employeeId")
+  @@index([roleId], map: "idx_user_roleId")
+}
+
+model migrations {
+  id         Int      @id @default(dbgenerated("nextval('_migrations_id_seq'::regclass)"))
+  name       String   @unique @db.VarChar(255)
+  executedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("_migrations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Vehicle {
+  id                                           Int                 @id @default(autoincrement())
+  plateNumber                                  String              @unique @db.VarChar(20)
+  type                                         String?             @db.VarChar(50)
+  brand                                        String?             @db.VarChar(100)
+  model                                        String?             @db.VarChar(100)
+  yearMfg                                      Int?
+  tonnage                                      Decimal?            @db.Decimal(10, 2)
+  cubicMeters                                  Decimal?            @db.Decimal(10, 2)
+  fuelType                                     String?             @default("DIESEL") @db.VarChar(20)
+  ownerType                                    String              @default("INTERNAL") @db.VarChar(20)
+  supplierId                                   Int?
+  primaryDriverId                              Int?
+  secondaryDriverId                            Int?
+  status                                       String              @default("ACTIVE") @db.VarChar(20)
+  notes                                        String?
+  version                                      Int                 @default(1)
+  createdAt                                    DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt                                    DateTime            @default(now()) @db.Timestamptz(6)
+  chassisNumber                                String?             @db.VarChar(50)
+  engineNumber                                 String?             @db.VarChar(50)
+  grossWeight                                  Int?
+  curbWeight                                   Int?
+  payloadCapacity                              Int?
+  lengthMm                                     Int?
+  widthMm                                      Int?
+  heightMm                                     Int?
+  inspectionBookNumber                         String?             @db.VarChar(50)
+  registrationExpiry                           DateTime?           @db.Date
+  insuranceBodyExpiry                          DateTime?           @db.Date
+  insuranceLiabilityExpiry                     DateTime?           @db.Date
+  gpsExpiryDate                                DateTime?           @db.Date
+  bankName                                     String?             @db.VarChar(100)
+  registeredCsgt                               Boolean?            @default(false)
+  registeredRegistry                           Boolean?            @default(false)
+  lastCheckedAt                                DateTime?           @db.Timestamptz(6)
+  Trip                                         Trip[]
+  TripPlan                                     TripPlan[]
+  Employee_Vehicle_primaryDriverIdToEmployee   Employee?           @relation("Vehicle_primaryDriverIdToEmployee", fields: [primaryDriverId], references: [id], onUpdate: NoAction, map: "fk_vehicle_primaryDriver")
+  Employee_Vehicle_secondaryDriverIdToEmployee Employee?           @relation("Vehicle_secondaryDriverIdToEmployee", fields: [secondaryDriverId], references: [id], onUpdate: NoAction, map: "fk_vehicle_secondaryDriver")
+  Supplier                                     Supplier?           @relation(fields: [supplierId], references: [id], onUpdate: NoAction, map: "fk_vehicle_supplier")
+  VehicleFinance                               VehicleFinance?
+  VehicleInspection                            VehicleInspection[]
+
+  @@index([ownerType], map: "idx_vehicle_ownerType")
+  @@index([plateNumber], map: "idx_vehicle_plateNumber")
+  @@index([primaryDriverId], map: "idx_vehicle_primaryDriverId")
+  @@index([status], map: "idx_vehicle_status")
+  @@index([supplierId], map: "idx_vehicle_supplierId")
+}
+
+model VehicleFinance {
+  id             Int       @id @default(autoincrement())
+  vehicleId      Int       @unique
+  purchasePrice  Decimal?  @db.Decimal(18, 2)
+  purchaseDate   DateTime? @db.Date
+  loanAmount     Decimal?  @db.Decimal(18, 2)
+  interestRate   Decimal?  @db.Decimal(5, 2)
+  loanStartDate  DateTime? @db.Date
+  loanEndDate    DateTime? @db.Date
+  monthlyPayment Decimal?  @db.Decimal(18, 2)
+  insuranceFee   Decimal?  @db.Decimal(18, 2)
+  roadTax        Decimal?  @db.Decimal(18, 2)
+  depreciation   Decimal?  @db.Decimal(18, 2)
+  notes          String?
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @db.Timestamptz(6)
+  Vehicle        Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vehiclefinance_vehicle")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model VehicleInspection {
+  id                Int      @id @default(autoincrement())
+  vehicleId         Int
+  inspectionDate    DateTime @db.Date
+  expiryDate        DateTime @db.Date
+  result            String   @default("PASS") @db.VarChar(20)
+  inspectionCenter  String?  @db.VarChar(200)
+  certificateNumber String?  @db.VarChar(100)
+  cost              Decimal? @db.Decimal(18, 2)
+  notes             String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  Vehicle           Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vehicleinspection_vehicle")
+
+  @@index([expiryDate], map: "idx_vehicleinspection_expiryDate")
+  @@index([vehicleId], map: "idx_vehicleinspection_vehicleId")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Supplier {
+  id            Int       @id @default(autoincrement())
+  code          String    @unique @db.VarChar(50)
+  name          String    @db.VarChar(200)
+  shortName     String?   @db.VarChar(100)
+  taxCode       String?   @db.VarChar(20)
+  phone         String?   @db.VarChar(20)
+  email         String?   @db.VarChar(100)
+  address       String?
+  contactPerson String?   @db.VarChar(200)
+  contactPhone  String?   @db.VarChar(20)
+  bankAccount   String?   @db.VarChar(50)
+  bankName      String?   @db.VarChar(200)
+  maxVehicles   Int?
+  status        String    @default("ACTIVE") @db.VarChar(20)
+  notes         String?
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @db.Timestamptz(6)
+  Vehicle       Vehicle[]
+
+  @@index([code], map: "idx_supplier_code")
+  @@index([status], map: "idx_supplier_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Customer {
+  id            Int          @id @default(autoincrement())
+  code          String       @unique @db.VarChar(50)
+  name          String       @db.VarChar(200)
+  shortName     String?      @db.VarChar(100)
+  taxCode       String?      @db.VarChar(20)
+  phone         String?      @db.VarChar(20)
+  email         String?      @db.VarChar(100)
+  address       String?
+  contactPerson String?      @db.VarChar(200)
+  status        String       @default("ACTIVE") @db.VarChar(20)
+  notes         String?
+  version       Int          @default(1)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime     @default(now()) @db.Timestamptz(6)
+  PricingRow    PricingRow[]
+  Trip          Trip[]
+  TripPlan      TripPlan[]
+
+  @@index([code], map: "idx_customer_code")
+  @@index([status], map: "idx_customer_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model PricingRow {
+  id         Int       @id @default(autoincrement())
+  customerId Int
+  routeId    Int
+  tripType   String    @default("STANDARD") @db.VarChar(50)
+  unitPrice  Decimal   @db.Decimal(18, 2)
+  currency   String    @default("VND") @db.VarChar(10)
+  validFrom  DateTime  @db.Date
+  validTo    DateTime? @db.Date
+  status     String    @default("ACTIVE") @db.VarChar(20)
+  notes      String?
+  version    Int       @default(1)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @db.Timestamptz(6)
+  priceType  String    @default("CUSTOMER") @db.VarChar(20)
+  Customer   Customer  @relation(fields: [customerId], references: [id], onUpdate: NoAction, map: "fk_pricingrow_customer")
+  Route      Route     @relation(fields: [routeId], references: [id], onUpdate: NoAction, map: "fk_pricingrow_route")
+  Trip       Trip[]
+
+  @@index([customerId], map: "idx_pricingrow_customer")
+  @@index([customerId, routeId, tripType, status, validFrom], map: "idx_pricingrow_lookup")
+  @@index([routeId], map: "idx_pricingrow_route")
+  @@index([status], map: "idx_pricingrow_status")
+  @@index([validFrom], map: "idx_pricingrow_validFrom")
+  @@index([priceType], map: "idx_pricingrow_pricetype")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Route {
+  id             Int          @id @default(autoincrement())
+  code           String       @unique @db.VarChar(50)
+  name           String       @db.VarChar(200)
+  origin         String?      @db.VarChar(200)
+  destination    String?      @db.VarChar(200)
+  distanceKm     Decimal?     @db.Decimal(10, 1)
+  estimatedHours Decimal?     @db.Decimal(5, 1)
+  status         String       @default("ACTIVE") @db.VarChar(20)
+  notes          String?
+  version        Int          @default(1)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @db.Timestamptz(6)
+  PricingRow     PricingRow[]
+  Trip           Trip[]
+  TripPlan       TripPlan[]
+
+  @@index([code], map: "idx_route_code")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model AccountingPeriod {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique @db.VarChar(20)
+  name      String    @db.VarChar(100)
+  startDate DateTime  @db.Date
+  endDate   DateTime  @db.Date
+  status    String    @default("OPEN") @db.VarChar(20)
+  closedAt  DateTime? @db.Timestamptz(6)
+  closedBy  Int?
+  notes     String?
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @db.Timestamptz(6)
+  Employee  Employee? @relation(fields: [closedBy], references: [id], onUpdate: NoAction, map: "fk_accountingperiod_closedby")
+  Trip      Trip[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Trip {
+  id                                        Int               @id @default(autoincrement())
+  tripCode                                  String            @unique @db.VarChar(50)
+  tripDate                                  DateTime          @db.Date
+  customerId                                Int
+  routeId                                   Int
+  vehicleId                                 Int
+  primaryDriverId                           Int?
+  secondaryDriverId                         Int?
+  tripType                                  String            @default("STANDARD") @db.VarChar(50)
+  status                                    String            @default("PLANNED") @db.VarChar(20)
+  revenue                                   Decimal?          @default(0) @db.Decimal(18, 2)
+  totalCost                                 Decimal?          @default(0) @db.Decimal(18, 2)
+  profit                                    Decimal?          @default(0) @db.Decimal(18, 2)
+  unitPrice                                 Decimal?          @db.Decimal(18, 2)
+  pricingRowId                              Int?
+  accountingPeriodId                        Int?
+  departureTime                             DateTime?         @db.Timestamptz(6)
+  arrivalTime                               DateTime?         @db.Timestamptz(6)
+  actualKm                                  Decimal?          @db.Decimal(10, 1)
+  cargoWeight                               Decimal?          @db.Decimal(10, 2)
+  cargoDescription                          String?
+  notes                                     String?
+  version                                   Int               @default(1)
+  createdAt                                 DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt                                 DateTime          @default(now()) @db.Timestamptz(6)
+  driverSalary                              Decimal?          @db.Decimal(18, 2)
+  cargoChannel                              String?           @db.VarChar(100)
+  pickupAddress                             String?
+  deliveryAddress                           String?
+  appTrackingNumber                         String?           @db.VarChar(100)
+  appPlateNumber                            String?           @db.VarChar(20)
+  markingCode                               String?           @db.VarChar(100)
+  routeLabelCode                            String?           @db.VarChar(100)
+  accountingNotes                           String?
+  lastEditedById                            Int?
+  supplementarySalary                       Decimal?          @db.Decimal(18, 2)
+  lobbyFee                                  Decimal?          @db.Decimal(18, 2)
+  operatingCostHt                           Decimal?          @db.Decimal(18, 2)
+  vendorPaymentStatus                       String?           @default("UNPAID") @db.VarChar(20)
+  htInvoiceIssued                           Boolean?          @default(false)
+  vendorInvoiceIssued                       Boolean?          @default(false)
+  PayrollLine                               PayrollLine[]
+  AccountingPeriod                          AccountingPeriod? @relation(fields: [accountingPeriodId], references: [id], onUpdate: NoAction, map: "fk_trip_accountingperiod")
+  Customer                                  Customer          @relation(fields: [customerId], references: [id], onUpdate: NoAction, map: "fk_trip_customer")
+  Employee_Trip_lastEditedByIdToEmployee    Employee?         @relation("Trip_lastEditedByIdToEmployee", fields: [lastEditedById], references: [id], onUpdate: NoAction, map: "fk_trip_lasteditedby")
+  PricingRow                                PricingRow?       @relation(fields: [pricingRowId], references: [id], onUpdate: NoAction, map: "fk_trip_pricingrow")
+  Employee_Trip_primaryDriverIdToEmployee   Employee?         @relation("Trip_primaryDriverIdToEmployee", fields: [primaryDriverId], references: [id], onUpdate: NoAction, map: "fk_trip_primarydriver")
+  Route                                     Route             @relation(fields: [routeId], references: [id], onUpdate: NoAction, map: "fk_trip_route")
+  Employee_Trip_secondaryDriverIdToEmployee Employee?         @relation("Trip_secondaryDriverIdToEmployee", fields: [secondaryDriverId], references: [id], onUpdate: NoAction, map: "fk_trip_secondarydriver")
+  Vehicle                                   Vehicle           @relation(fields: [vehicleId], references: [id], onUpdate: NoAction, map: "fk_trip_vehicle")
+  TripCost                                  TripCost[]
+
+  @@index([accountingPeriodId], map: "idx_trip_accountingperiod")
+  @@index([customerId], map: "idx_trip_customer")
+  @@index([primaryDriverId], map: "idx_trip_primarydriver")
+  @@index([status], map: "idx_trip_status")
+  @@index([tripDate], map: "idx_trip_tripdate")
+  @@index([vehicleId], map: "idx_trip_vehicle")
+  @@index([cargoChannel], map: "idx_trip_cargochannel")
+  @@index([vendorPaymentStatus], map: "idx_trip_vendorpaymentstatus")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model TripCost {
+  id            Int      @id @default(autoincrement())
+  tripId        Int
+  costType      String   @db.VarChar(50)
+  amount        Decimal  @db.Decimal(18, 2)
+  description   String?
+  receiptNumber String?  @db.VarChar(100)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @db.Timestamptz(6)
+  Trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tripcost_trip")
+
+  @@index([tripId], map: "idx_tripcost_trip")
+}
+
+model TripPlan {
+  id                                            Int       @id @default(autoincrement())
+  customerId                                    Int
+  routeId                                       Int
+  vehicleId                                     Int
+  primaryDriverId                               Int?
+  secondaryDriverId                             Int?
+  scheduleDays                                  Int[]     @default([])
+  isActive                                      Boolean   @default(true)
+  notes                                         String?
+  version                                       Int       @default(1)
+  createdAt                                     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt                                     DateTime  @default(now()) @db.Timestamptz(6)
+  timeSlots                                     String[]  @default([])
+  Customer                                      Customer  @relation(fields: [customerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Employee_TripPlan_primaryDriverIdToEmployee   Employee? @relation("TripPlan_primaryDriverIdToEmployee", fields: [primaryDriverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Route                                         Route     @relation(fields: [routeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Employee_TripPlan_secondaryDriverIdToEmployee Employee? @relation("TripPlan_secondaryDriverIdToEmployee", fields: [secondaryDriverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Vehicle                                       Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([isActive], map: "idx_tripplan_active")
+  @@index([customerId], map: "idx_tripplan_customer")
+  @@index([routeId], map: "idx_tripplan_route")
+  @@index([vehicleId], map: "idx_tripplan_vehicle")
+}
+
+model PayrollEntry {
+  id             Int           @id @default(autoincrement())
+  periodId       Int
+  employeeId     Int
+  totalIncome    Decimal       @default(0) @db.Decimal(18, 2)
+  totalDeduction Decimal       @default(0) @db.Decimal(18, 2)
+  netPay         Decimal       @default(0) @db.Decimal(18, 2)
+  notes          String?
+  version        Int           @default(1)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime      @default(now()) @db.Timestamptz(6)
+  Employee       Employee      @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  PayrollPeriod  PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  PayrollLine    PayrollLine[]
+
+  @@unique([periodId, employeeId])
+  @@index([employeeId], map: "idx_payrollentry_employee")
+  @@index([periodId], map: "idx_payrollentry_period")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model PayrollLine {
+  id           Int          @id @default(autoincrement())
+  entryId      Int
+  category     String       @db.VarChar(20)
+  lineType     String       @db.VarChar(50)
+  description  String?
+  amount       Decimal      @default(0) @db.Decimal(18, 2)
+  source       String       @default("MANUAL") @db.VarChar(20)
+  tripId       Int?
+  tripDate     DateTime?    @db.Date
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  PayrollEntry PayrollEntry @relation(fields: [entryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  Trip         Trip?        @relation(fields: [tripId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([entryId], map: "idx_payrollline_entry")
+  @@index([tripId], map: "idx_payrollline_trip")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model PayrollPeriod {
+  id           Int            @id @default(autoincrement())
+  month        Int
+  year         Int
+  type         String         @db.VarChar(20)
+  mode         String         @default("MANUAL") @db.VarChar(20)
+  regionId     Int?
+  status       String         @default("DRAFT") @db.VarChar(20)
+  confirmedBy  Int?
+  confirmedAt  DateTime?      @db.Timestamptz(6)
+  paidAt       DateTime?      @db.Timestamptz(6)
+  notes        String?
+  version      Int            @default(1)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime       @default(now()) @db.Timestamptz(6)
+  PayrollEntry PayrollEntry[]
+  Region       Region?        @relation(fields: [regionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status], map: "idx_period_status")
+  @@index([year, month], map: "idx_period_year_month")
+}
+
+model Region {
+  id            Int             @id @default(autoincrement())
+  code          String          @unique @db.VarChar(50)
+  name          String          @db.VarChar(200)
+  status        String          @default("ACTIVE") @db.VarChar(20)
+  createdAt     DateTime        @default(now()) @db.Timestamptz(6)
+  Employee      Employee[]
+  PayrollPeriod PayrollPeriod[]
+}

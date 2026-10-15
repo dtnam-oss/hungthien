@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HT-TMS – Danh sách chuyến (reference)</title>
+<!--
+  REFERENCE IMPLEMENTATION — HT-TMS trips screen.
+  Standalone HTML + CSS + vanilla JS. Open directly in a browser.
+  This is the source of truth for look & behavior. Port it into the app's
+  own components; do not copy the mock data (TRIPS) into production.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* ---- Design tokens ---- */
+  --font-sans:'Be Vietnam Pro',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+
+  --bg:#F6F6F7; --surface:#FFFFFF; --surface-2:#FAFAFB; --surface-3:#F2F2F4; --track:#EDEDF0;
+  --border:#E7E7EA; --border-soft:#F0F0F2; --border-input:#E0E0E4; --border-card:#ECECEF;
+  --text:#18181B; --text-2:#27272A; --text-3:#3F3F46; --muted:#5F6068; --muted-2:#6B6C75; --faint:#8A8B93;
+
+  --brand:#D92D20; --brand-hover:#B42318; --brand-text:#B42318; --brand-soft:#FEF3F2; --brand-badge-bg:#FEE4E2;
+  --warn-bg:#FFFAEB; --warn-border:#FEDF89; --warn-border-strong:#FEC84B; --warn-text:#7A2E0E; --warn-accent:#DC6803; --warn-strong:#B54708;
+  --success-text:#16683A;
+
+  --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:12px; --r-2xl:14px; --r-pill:999px;
+  --shadow-seg:0 1px 2px rgba(0,0,0,.08);
+  --shadow-drawer:-16px 0 40px rgba(24,24,27,.08);
+  --shadow-float:0 12px 32px rgba(0,0,0,.24);
+
+  --sidebar-w:252px; --topbar-h:64px; --drawer-w:460px;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font-sans);font-size:14px;color:var(--text);background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+button:disabled{cursor:default}
+input{font-family:inherit}
+a{color:var(--brand-text)}
+.mono{font-family:var(--font-mono)}
+svg{flex-shrink:0}
+
+/* ---- App shell ---- */
+.app{display:grid;grid-template-columns:var(--sidebar-w) minmax(0,1fr);height:100vh;overflow:hidden}
+.sidebar{display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--border);min-height:0}
+.brand{display:flex;align-items:center;gap:10px;height:var(--topbar-h);padding:0 18px;border-bottom:1px solid var(--border-soft)}
+.brand-logo{width:32px;height:32px;border-radius:var(--r-md);background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px}
+.brand-name{font-weight:700;font-size:16px;letter-spacing:-.01em;flex-grow:1}
+.icon-btn{width:34px;height:34px;border:0;background:transparent;border-radius:var(--r-md);color:var(--text-3);display:flex;align-items:center;justify-content:center}
+.icon-btn:hover{background:var(--surface-3)}
+.nav{flex-grow:1;overflow-y:auto;padding:12px 10px 16px;display:flex;flex-direction:column;gap:2px}
+.nav-section{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--muted-2);padding:16px 10px 6px}
+.nav-section:first-child{padding-top:10px}
+.nav-item{display:flex;align-items:center;gap:12px;height:38px;padding:0 10px;border-radius:var(--r-md);color:var(--text-3);text-decoration:none}
+.nav-item:hover{background:var(--surface-3)}
+.nav-item.active{color:var(--brand-text);font-weight:600}
+.nav-item .grow{flex-grow:1}
+.nav-sub{display:flex;flex-direction:column;gap:2px;margin-left:19px;padding-left:12px;border-left:1px solid var(--border)}
+.nav-sub a{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border-radius:var(--r-md);color:#52525B;text-decoration:none}
+.nav-sub a:hover{background:var(--surface-3)}
+.nav-sub a.active{background:var(--brand-soft);color:var(--brand-text);font-weight:600}
+.badge-new{font-size:10px;font-weight:600;color:var(--brand-text);background:var(--brand-badge-bg);padding:2px 6px;border-radius:var(--r-pill)}
+.user{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--border-soft)}
+.avatar{width:34px;height:34px;border-radius:var(--r-pill);background:var(--text);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.topbar{display:flex;align-items:center;gap:16px;height:var(--topbar-h);padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted-2);flex-grow:1}
+.crumbs .cur{color:var(--text);font-weight:600}
+.global-search{display:flex;align-items:center;gap:8px;width:320px;height:38px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-2);color:var(--muted-2)}
+.global-search input,.search input{border:0;outline:none;background:transparent;flex-grow:1;font-size:13px;color:var(--text);min-width:0}
+.kbd{font-family:var(--font-mono);font-size:11px;color:#52525B;border:1px solid var(--border-input);border-radius:var(--r-sm);padding:1px 6px;background:#fff}
+.bell{position:relative;width:40px;height:40px}
+.bell-count{position:absolute;top:6px;right:6px;min-width:16px;height:16px;border-radius:var(--r-pill);background:var(--brand);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
+
+.scroll{flex-grow:1;overflow-y:auto;min-height:0}
+.content{padding:24px 28px 96px;display:flex;flex-direction:column;gap:16px;max-width:1600px}
+
+/* ---- Page header ---- */
+.page-head{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.page-head h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em}
+.page-head p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 14px;border-radius:var(--r-lg);font-size:14px;font-weight:500}
+.btn-secondary{border:1px solid var(--border-input);background:#fff;color:var(--text-2)}
+.btn-secondary:hover{background:var(--surface-3)}
+.btn-primary{border:0;background:var(--brand);color:#fff;font-weight:600;padding:0 16px}
+.btn-primary:hover{background:var(--brand-hover)}
+
+/* ---- Status tabs (segmented) ---- */
+.seg{display:flex;gap:4px;padding:4px;background:var(--track);border-radius:var(--r-xl);width:fit-content;max-width:100%;overflow-x:auto}
+.seg-tab{display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:0;border-radius:9px;font-size:13px;white-space:nowrap;background:transparent;color:#52525B;font-weight:500}
+.seg-tab[aria-selected="true"]{background:#fff;color:var(--text);font-weight:600;box-shadow:var(--shadow-seg)}
+.seg-count{font-size:11px;font-weight:600;min-width:20px;height:18px;padding:0 5px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;background:var(--border-input);color:var(--text-3)}
+.seg-tab[aria-selected="true"] .seg-count{background:var(--brand);color:#fff}
+
+/* ---- Attention banner ---- */
+.alert{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--r-xl);color:var(--warn-text)}
+.alert .txt{flex-grow:1}
+.alert button{height:34px;padding:0 12px;border:1px solid var(--warn-border-strong);background:#fff;border-radius:var(--r-md);font-size:13px;font-weight:600;color:var(--warn-text)}
+
+/* ---- Table card ---- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);overflow:hidden}
+.toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border-soft);flex-wrap:wrap}
+.search{display:flex;align-items:center;gap:8px;width:300px;max-width:100%;height:36px;padding:0 12px;border:1px solid var(--border-input);border-radius:9px;color:var(--muted-2)}
+.filter-btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1px solid var(--border-input);background:#fff;border-radius:9px;font-size:13px;color:var(--text-2)}
+.filter-btn:hover{background:var(--surface-3)}
+.filter-btn.dashed{border-style:dashed;border-color:#D4D4D8;color:#52525B;padding:0 10px}
+.spacer{flex-grow:1}
+.view-toggle{display:flex;padding:3px;background:var(--surface-3);border-radius:9px}
+.view-toggle button{height:30px;padding:0 12px;border:0;border-radius:7px;font-size:13px;background:transparent;color:#52525B;font-weight:500}
+.view-toggle button[aria-pressed="true"]{background:#fff;color:var(--text);font-weight:600;box-shadow:var(--shadow-seg)}
+
+.table-scroll{overflow-x:auto}
+.table{min-width:1080px}
+.trow,.thead{display:grid;grid-template-columns:48px minmax(240px,1.6fr) minmax(170px,1.2fr) minmax(170px,1.1fr) 90px 150px minmax(170px,1.1fr) 52px;align-items:center;padding:0 8px;border-bottom:1px solid var(--border-soft)}
+.thead{height:40px;background:var(--surface-2);font-size:12px;font-weight:600;color:var(--muted)}
+.trow{min-height:64px}
+.trow:hover{background:var(--surface-2)}
+.trow.selected,.trow.selected:hover{background:var(--brand-soft)}
+.cb{display:flex;justify-content:center}
+.cb input{width:16px;height:16px;accent-color:var(--brand)}
+.num{text-align:right;padding-right:16px;font-variant-numeric:tabular-nums}
+.group-head{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 16px;border:0;border-bottom:1px solid var(--border-soft);background:#fff;text-align:left;font-size:13px;color:var(--text)}
+.group-head .chev{transition:transform .15s}
+.group-head[aria-expanded="false"] .chev{transform:rotate(-90deg)}
+.group-head .count{font-size:12px;color:#52525B;background:var(--surface-3);border-radius:var(--r-pill);padding:2px 8px}
+.group-head .sum{font-size:12px;color:var(--muted)}
+.trip-open{display:flex;flex-direction:column;align-items:flex-start;gap:4px;border:0;background:transparent;padding:10px 0;text-align:left;color:var(--text)}
+.route{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.trip-meta{display:flex;gap:8px;font-size:12px;color:var(--muted)}
+.trip-meta .mono{color:var(--text-3)}
+.cell-cust{display:flex;flex-direction:column;gap:2px;min-width:0;padding-right:12px}
+.cell-cust .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub-code{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.cell-veh{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.plate{font-family:var(--font-mono);font-size:12px;font-weight:600;padding:2px 8px;border:1px solid #D4D4D8;border-radius:var(--r-sm);background:var(--surface-2);color:var(--text-2)}
+.missing{font-size:12px;font-weight:600;color:var(--warn-strong)}
+.small-muted{font-size:12px;color:var(--muted)}
+.assign-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px dashed #F79009;background:var(--warn-bg);border-radius:var(--r-md);font-size:12px;font-weight:600;color:#93370D}
+.empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:56px 16px;color:var(--muted)}
+.empty b{color:var(--text)}
+
+/* ---- Status pill ---- */
+.pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:var(--r-pill);font-size:12px;font-weight:600;white-space:nowrap}
+.pill i{width:6px;height:6px;border-radius:var(--r-pill)}
+.st-plan{background:#EEF0FF;color:#3538CD}.st-plan i{background:#6172F3}
+.st-dispatched{background:#F4EFFF;color:#5B21B6}.st-dispatched i{background:#8B5CF6}
+.st-transit{background:#FFF4E0;color:#93370D}.st-transit i{background:#F79009}
+.st-done{background:#E8F5EC;color:#16683A}.st-done i{background:#22A559}
+.st-cancel{background:#F1F1F3;color:#52525B}.st-cancel i{background:#A1A1AA}
+
+/* ---- Footer / pagination ---- */
+.foot{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--border-soft);font-size:13px;color:var(--muted);flex-wrap:wrap}
+.pager{display:flex;gap:4px}
+.pager button{width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:var(--r-md);color:#A1A1AA}
+.pager button[aria-current="page"]{border-color:var(--text);background:var(--text);color:#fff;font-weight:600}
+
+/* ---- Bulk bar ---- */
+.bulk{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:8px 8px 8px 16px;background:var(--text);color:#fff;border-radius:var(--r-2xl);box-shadow:var(--shadow-float);font-size:13px;z-index:5;white-space:nowrap}
+.bulk b{margin-right:8px}
+.bulk button{height:34px;padding:0 12px;border:0;background:#2E2E33;border-radius:9px;color:#fff;font-size:13px}
+.bulk button.x{width:34px;padding:0;background:transparent;color:#D4D4D8;display:flex;align-items:center;justify-content:center}
+
+/* ---- Drawer ---- */
+.drawer{position:absolute;top:var(--topbar-h);right:0;bottom:0;width:var(--drawer-w);display:flex;flex-direction:column;background:#fff;border-left:1px solid var(--border);box-shadow:var(--shadow-drawer);z-index:6}
+.drawer-head{padding:18px 20px 0;display:flex;flex-direction:column;gap:12px}
+.drawer-title{display:flex;align-items:flex-start;gap:8px}
+.drawer-title .info{flex-grow:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.drawer-code{display:flex;align-items:center;gap:10px}
+.drawer-code .mono{font-size:18px;font-weight:600}
+.drawer-route{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600}
+.steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px 0 2px}
+.step{display:flex;flex-direction:column;gap:6px}
+.step .bar{height:4px;border-radius:var(--r-pill);background:#E4E4E7}
+.step span{font-size:11px;white-space:nowrap;color:var(--muted-2)}
+.step.done .bar{background:var(--brand)} .step.done span{color:var(--text-3)}
+.step.current .bar{background:#F97066} .step.current span{color:var(--text);font-weight:600}
+.dtabs{display:flex;gap:20px;border-bottom:1px solid var(--border-soft)}
+.dtabs button{height:40px;padding:0;border:0;background:transparent;font-size:14px;margin-bottom:-1px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent}
+.dtabs button[aria-selected="true"]{color:var(--brand-text);font-weight:600;border-bottom-color:var(--brand)}
+.drawer-body{flex-grow:1;overflow-y:auto;padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px;background:var(--surface-2)}
+.panel{background:#fff;border:1px solid var(--border-card);border-radius:var(--r-xl);padding:16px}
+.panel-title{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
+.kv .k{font-size:12px;color:var(--muted)} .kv .v{margin-top:2px}
+.timeline{display:grid;grid-template-columns:20px minmax(0,1fr) auto;column-gap:12px}
+.tl-rail{display:flex;flex-direction:column;align-items:center}
+.tl-start{width:12px;height:12px;border-radius:var(--r-pill);border:3px solid var(--brand);margin-top:4px}
+.tl-line{flex-grow:1;width:2px;background:#E4E4E7;margin:4px 0;min-height:28px}
+.tl-end{width:12px;height:12px;border-radius:3px;background:var(--text);margin-top:4px}
+.tl-time{text-align:right;font-size:13px}
+.tl-time div:first-child{font-weight:600}.tl-time div:last-child,.tl-addr{color:var(--muted);font-size:13px}
+.finance{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:#fff;border:1px solid var(--border-card);border-radius:var(--r-xl)}
+.finance > div{padding:14px 16px}
+.finance > div + div{border-left:1px solid var(--border-soft)}
+.finance .k{font-size:12px;color:var(--muted)}
+.finance .v{font-size:16px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.finance .v.pos{color:var(--success-text)}
+.alert-sm{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--r-xl);font-size:13px;color:var(--warn-text)}
+.alert-sm span{flex-grow:1}
+.alert-sm button{height:32px;padding:0 12px;border:0;background:var(--warn-accent);border-radius:var(--r-md);font-size:13px;font-weight:600;color:#fff}
+.cost-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border-soft)}
+.cost-row span:first-child{flex-grow:1}
+.cost-total{display:flex;padding:12px 16px;font-weight:700}.cost-total span:first-child{flex-grow:1}
+.add-dashed{display:flex;align-items:center;justify-content:center;gap:8px;height:40px;border:1px dashed #D4D4D8;background:#fff;border-radius:var(--r-lg);font-size:13px;font-weight:500;color:var(--text-3)}
+.hist{display:grid;grid-template-columns:20px minmax(0,1fr);column-gap:12px}
+.hist .dot{width:8px;height:8px;border-radius:var(--r-pill);background:#A1A1AA;margin-top:6px}
+.hist .line{flex-grow:1;width:1px;background:#E4E4E7;margin-top:4px}
+.hist .body{padding-bottom:16px}
+.drawer-foot{display:flex;gap:8px;padding:14px 20px;border-top:1px solid var(--border-soft);background:#fff}
+.drawer-foot .btn{height:42px;flex-grow:1}
+.drawer-foot .del{width:42px;flex-grow:0;padding:0;color:var(--brand-text)}
+
+/* ---- Responsive ---- */
+@media (max-width:960px){
+  .app{grid-template-columns:1fr}
+  .sidebar,.hide-sm{display:none}
+  .drawer{width:100%}
+  .topbar,.content{padding-left:16px;padding-right:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">H</div><div class="brand-name">HT-TMS</div>
+      <button class="icon-btn" aria-label="Thu gọn menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+    </div>
+    <nav class="nav" aria-label="Menu chính">
+      <div class="nav-section">BÁO CÁO</div>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg><span class="grow">Lãi lỗ</span><span class="badge-new">Mới</span></a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5M12 5V3"/></svg><span class="grow">Hiệu quả đội xe</span><span class="badge-new">Mới</span></a>
+      <div class="nav-section">VẬN HÀNH</div>
+      <a href="#" class="nav-item active" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5"/></svg><span class="grow">Chuyến đi</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></a>
+      <div class="nav-sub">
+        <a href="#" class="active">Danh sách chuyến</a>
+        <a href="#"><span style="flex-grow:1">Kế hoạch</span><span class="badge-new">Mới</span></a>
+        <a href="#">Cổng tài xế</a>
+      </div>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16V6h12v10M14 9h4l4 4v3h-8"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></svg>Phương tiện</a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M4 10h10M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg><span class="grow">Nhiên liệu</span><span class="badge-new">Mới</span></a>
+      <div class="nav-section">ĐỐI TÁC &amp; NHÂN SỰ</div>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg><span class="grow">Khách hàng</span><span class="badge-new">Mới</span></a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>Nhà cung cấp</a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17a4 4 0 0 1 8 0"/></svg>Nhân viên</a>
+      <div class="nav-section">TÀI CHÍNH</div>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span class="grow">Bảng giá</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 21h14M3 7h18M6 7l-3 7a3 3 0 0 0 6 0zM18 7l-3 7a3 3 0 0 0 6 0z"/></svg><span class="grow">Đối soát</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h3"/></svg><span class="grow">Công nợ</span><span class="badge-new">Mới</span></a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg>Bảng lương</a>
+      <div class="nav-section">HỆ THỐNG</div>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Vai trò &amp; Quyền</a>
+      <a href="#" class="nav-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 11-4.7M16 19l2 2 4-4"/></svg>Gán quyền NV</a>
+    </nav>
+    <div class="user">
+      <div class="avatar">A</div>
+      <div style="flex-grow:1;min-width:0"><div style="font-weight:600;font-size:13px">admin</div><div class="small-muted">Quản trị viên</div></div>
+      <button class="icon-btn" aria-label="Đăng xuất"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/></svg></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <nav class="crumbs" aria-label="Breadcrumb"><span>Vận hành</span><span>/</span><span>Chuyến đi</span><span>/</span><span class="cur">Danh sách chuyến</span></nav>
+      <label class="global-search hide-sm">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input aria-label="Tìm kiếm toàn hệ thống" placeholder="Tìm nhanh chuyến, xe, khách hàng…"><span class="kbd">Ctrl K</span>
+      </label>
+      <button class="icon-btn bell" aria-label="Thông báo, 3 mới"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="bell-count">3</span></button>
+    </header>
+
+    <div class="scroll">
+      <div class="content">
+        <div class="page-head">
+          <div style="flex-grow:1">
+            <h1>Chuyến đi</h1>
+            <p>Theo dõi, điều phối và cập nhật trạng thái các chuyến vận chuyển.</p>
+          </div>
+          <button class="btn btn-secondary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Xuất Excel</button>
+          <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Tạo chuyến</button>
+        </div>
+
+        <div class="seg" role="tablist" aria-label="Lọc theo trạng thái" id="statusTabs"></div>
+        <div id="attn"></div>
+
+        <section class="card" aria-label="Danh sách chuyến">
+          <div class="toolbar">
+            <label class="search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <input id="q" aria-label="Tìm chuyến" placeholder="Mã chuyến, khách hàng, tuyến, biển số…">
+            </label>
+            <button class="filter-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>02/10 – 03/10/2026</button>
+            <button class="filter-btn">Khách hàng <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6C75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <button class="filter-btn">Tài xế <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6C75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <button class="filter-btn">Nhà xe <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6C75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <button class="filter-btn dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Bộ lọc</button>
+            <div class="spacer"></div>
+            <div class="view-toggle" role="group" aria-label="Kiểu hiển thị">
+              <button data-view="grouped" aria-pressed="true">Theo ngày</button>
+              <button data-view="flat" aria-pressed="false">Danh sách</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <div class="table">
+              <div class="thead">
+                <label class="cb"><input type="checkbox" id="checkAll" aria-label="Chọn tất cả"></label>
+                <div>Chuyến / Tuyến</div><div>Khách hàng</div><div>Xe · Tài xế</div>
+                <div class="num">SL</div><div>Trạng thái</div><div>Nhà xe</div><div></div>
+              </div>
+              <div id="tbody"></div>
+            </div>
+          </div>
+          <div class="foot">
+            <span style="flex-grow:1" id="shown"></span>
+            <span>Số dòng: 50</span>
+            <div class="pager">
+              <button aria-label="Trang trước" disabled>‹</button>
+              <button aria-current="page">1</button>
+              <button aria-label="Trang sau" disabled>›</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="bulk"></div>
+    <div id="drawer"></div>
+  </main>
+</div>
+
+<script>
+/* ===== MOCK DATA (replace with API) ===== */
+const TRIPS = [
+ { id:'C1002-533', date:'2026-10-02', from:'TP.HCM', to:'Bình Dương', fromAddr:'KCN Tân Bình, Q. Tân Phú', toAddr:'KCN VSIP 1, Thuận An', customer:'Công ty TNHH Thép Việt', custCode:'KH001', routeCode:'HCM-BD', plate:'30H-111.11', driver:'Nguyễn Văn An', driver2:'Lê Văn Tâm', qty:18, status:'transit', carrier:'Vận tải Phương Nam', time:'07:30', eta:'10:15', revenue:5000000, costs:[['Cước nhà xe',3200000],['Phí cầu đường',180000],['Bốc xếp',250000]] },
+ { id:'C1002-534', date:'2026-10-02', from:'TP.HCM', to:'Bình Dương', fromAddr:'KCN Tân Bình, Q. Tân Phú', toAddr:'KCN Mỹ Phước 2, Bến Cát', customer:'Công ty TNHH Thép Việt', custCode:'KH001', routeCode:'HCM-BD', plate:'51C-123.45', driver:'Trần Minh Đức', driver2:'', qty:15, status:'plan', carrier:'', time:'13:00', eta:'15:30', revenue:5000000, costs:[] },
+ { id:'C1002-535', date:'2026-10-02', from:'Cát Lái', to:'Long An', fromAddr:'Cảng Cát Lái, TP. Thủ Đức', toAddr:'KCN Tân Đức, Đức Hòa', customer:'Công ty CP Bao bì Sài Gòn', custCode:'KH014', routeCode:'CL-LA', plate:'51D-456.78', driver:'Lê Hoàng Phúc', driver2:'', qty:22, status:'done', carrier:'Vận tải Phương Nam', time:'05:00', eta:'08:00', revenue:6400000, costs:[['Cước nhà xe',4100000],['Phí cầu đường',220000],['Nâng hạ cont',600000]] },
+ { id:'C1002-536', date:'2026-10-02', from:'Bình Dương', to:'Đồng Nai', fromAddr:'KCN VSIP 2, Tân Uyên', toAddr:'KCN Amata, Biên Hòa', customer:'Công ty TNHH Thép Việt', custCode:'KH001', routeCode:'BD-DN', plate:'', driver:'', driver2:'', qty:10, status:'plan', carrier:'', time:'16:00', eta:'18:00', revenue:3800000, costs:[] },
+ { id:'C1003-101', date:'2026-10-03', from:'TP.HCM', to:'Vũng Tàu', fromAddr:'Kho Linh Trung, TP. Thủ Đức', toAddr:'Cảng Cái Mép, Phú Mỹ', customer:'Công ty CP Bao bì Sài Gòn', custCode:'KH014', routeCode:'HCM-VT', plate:'30H-111.11', driver:'Nguyễn Văn An', driver2:'Lê Văn Tâm', qty:20, status:'dispatched', carrier:'Vận tải Phương Nam', time:'06:00', eta:'09:30', revenue:7200000, costs:[['Cước nhà xe',4800000]] },
+ { id:'C1003-102', date:'2026-10-03', from:'Long An', to:'Cần Thơ', fromAddr:'KCN Long Hậu, Cần Giuộc', toAddr:'KCN Trà Nóc, Bình Thủy', customer:'Công ty TNHH Nông sản Miền Tây', custCode:'KH022', routeCode:'LA-CT', plate:'65C-089.12', driver:'Phạm Quốc Bảo', driver2:'', qty:25, status:'plan', carrier:'Vận tải Tây Đô', time:'08:00', eta:'12:30', revenue:9500000, costs:[] },
+ { id:'C1003-103', date:'2026-10-03', from:'TP.HCM', to:'Bình Dương', fromAddr:'KCN Tân Bình, Q. Tân Phú', toAddr:'KCN VSIP 1, Thuận An', customer:'Công ty TNHH Thép Việt', custCode:'KH001', routeCode:'HCM-BD', plate:'51C-123.45', driver:'Trần Minh Đức', driver2:'', qty:12, status:'cancel', carrier:'', time:'14:00', eta:'16:30', revenue:0, costs:[] }
+];
+
+/* ===== Domain config ===== */
+const STATUS = {
+  plan:       { label:'Kế hoạch',   step:0, primary:'Điều xe' },
+  dispatched: { label:'Đã điều xe', step:1, primary:'Bắt đầu chuyến' },
+  transit:    { label:'Đang chạy',  step:2, primary:'Xác nhận đã giao' },
+  done:       { label:'Hoàn thành', step:4, primary:'Xem chứng từ' },
+  cancel:     { label:'Đã hủy',     step:-1, primary:'Khôi phục chuyến' }
+};
+const STEPS = ['Kế hoạch','Điều xe','Đang chạy','Đã giao','Hoàn thành'];
+const TABS = [['all','Tất cả'],['plan','Kế hoạch'],['dispatched','Đã điều xe'],['transit','Đang chạy'],['done','Hoàn thành'],['cancel','Đã hủy']];
+const DAY_LABEL = { '2026-10-02':['Hôm nay','Thứ Sáu, 02/10/2026'], '2026-10-03':['Ngày mai','Thứ Bảy, 03/10/2026'] };
+
+/* ===== State ===== */
+const state = { sel:'C1002-533', tab:'all', q:'', checked:new Set(), attn:false, grouped:true, closed:new Set(), dtab:'info' };
+
+/* ===== Helpers ===== */
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const vnd = n => n.toLocaleString('vi-VN') + ' đ';
+const pill = st => `<span class="pill st-${st}"><i></i>${STATUS[st].label}</span>`;
+const arrow = s => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="#8A8B93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+/** Trip needs attention: upcoming (plan/dispatched) but missing vehicle, driver or carrier */
+const needs = t => (t.status==='plan'||t.status==='dispatched') && (!t.plate||!t.driver||!t.carrier);
+const matchQ = t => !state.q || [t.id,t.from,t.to,t.customer,t.plate,t.driver].join(' ').toLowerCase().includes(state.q.toLowerCase());
+const visible = () => TRIPS.filter(matchQ).filter(t => (!state.attn || needs(t)) && (state.tab==='all' || t.status===state.tab));
+
+/* ===== Renderers ===== */
+function renderTabs(){
+  const base = TRIPS.filter(matchQ);
+  statusTabs.innerHTML = TABS.map(([id,label]) => {
+    const c = base.filter(t => id==='all' || t.status===id).length;
+    return `<button class="seg-tab" role="tab" aria-selected="${state.tab===id}" data-tab="${id}"><span>${label}</span><span class="seg-count">${c}</span></button>`;
+  }).join('');
+}
+function renderAttn(){
+  const n = TRIPS.filter(needs).length;
+  attn.innerHTML = n ? `<div class="alert">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>
+    <div class="txt"><strong>${n} chuyến</strong> sắp chạy chưa gán đủ xe, tài xế hoặc nhà xe.</div>
+    <button data-act="attn">${state.attn ? 'Hiện tất cả' : 'Lọc các chuyến này'}</button></div>` : '';
+}
+function row(t){
+  const carrier = t.carrier ? esc(t.carrier)
+    : (t.status==='plan'||t.status==='dispatched')
+      ? `<button class="assign-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Gán nhà xe</button>`
+      : `<span style="color:var(--faint)">—</span>`;
+  return `<div class="trow${state.sel===t.id?' selected':''}">
+    <label class="cb"><input type="checkbox" data-check="${t.id}" aria-label="Chọn chuyến ${t.id}" ${state.checked.has(t.id)?'checked':''}></label>
+    <button class="trip-open" data-open="${t.id}">
+      <span class="route">${esc(t.from)}${arrow(14)}${esc(t.to)}</span>
+      <span class="trip-meta"><span class="mono">${t.id}</span><span>·</span><span>Nhận ${t.time}</span></span>
+    </button>
+    <div class="cell-cust"><span class="name">${esc(t.customer)}</span><span class="sub-code">${t.custCode}</span></div>
+    <div class="cell-veh">${t.plate ? `<span class="plate">${t.plate}</span>` : `<span class="missing">Chưa gán xe</span>`}<span class="small-muted">${esc(t.driver||'Chưa gán tài xế')}</span></div>
+    <div class="num"><b>${t.qty}</b> <span class="small-muted">tấn</span></div>
+    <div>${pill(t.status)}</div>
+    <div style="min-width:0;padding-right:12px">${carrier}</div>
+    <button class="icon-btn" aria-label="Thao tác khác cho ${t.id}"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+  </div>`;
+}
+function renderTable(){
+  const list = visible();
+  let html = '';
+  if (!list.length) html = `<div class="empty"><b>Không có chuyến phù hợp</b><div style="font-size:13px">Thử đổi trạng thái hoặc xoá bớt bộ lọc.</div></div>`;
+  else if (!state.grouped) html = list.map(row).join('');
+  else {
+    for (const day of Object.keys(DAY_LABEL)) {
+      const ts = list.filter(t => t.date===day); if (!ts.length) continue;
+      const open = !state.closed.has(day);
+      const running = ts.filter(t => t.status==='transit').length;
+      const tons = ts.reduce((a,t) => a + (t.status==='cancel'?0:t.qty), 0);
+      html += `<button class="group-head" data-group="${day}" aria-expanded="${open}">
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5F6068" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        <b>${DAY_LABEL[day][0]}</b><span style="color:var(--muted)">${DAY_LABEL[day][1]}</span>
+        <span class="count">${ts.length} chuyến</span><span class="spacer"></span>
+        <span class="sum">${running} đang chạy · ${tons} tấn</span></button>`;
+      if (open) html += ts.map(row).join('');
+    }
+  }
+  tbody.innerHTML = html;
+  checkAll.checked = list.length>0 && list.every(t => state.checked.has(t.id));
+  shown.innerHTML = `Hiển thị <strong style="color:var(--text)">${list.length}</strong> / ${TRIPS.length} chuyến`;
+  document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.view==='grouped')===state.grouped)));
+}
+function renderBulk(){
+  const n = state.checked.size;
+  bulk.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n} chuyến</b>
+    <button>Gán xe / nhà xe</button><button>Đổi trạng thái</button><button>Xuất Excel</button>
+    <button class="x" data-act="clear" aria-label="Bỏ chọn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>` : '';
+}
+function renderDrawer(){
+  const t = TRIPS.find(x => x.id===state.sel);
+  if (!t) { drawer.innerHTML=''; return; }
+  const s = STATUS[t.status];
+  const [y,m,d] = t.date.split('-');
+  const costTotal = t.costs.reduce((a,c)=>a+c[1],0);
+  const missing = [!t.plate&&'xe', !t.driver&&'tài xế', !t.carrier&&'nhà xe'].filter(Boolean);
+  const steps = STEPS.map((l,i) => {
+    const cls = s.step<0 ? '' : i<s.step ? 'done' : i===s.step ? 'current' : '';
+    return `<div class="step ${cls}"><div class="bar"></div><span>${l}</span></div>`;
+  }).join('');
+  const hist = [{text:'Tạo chuyến', meta:'admin · 01/10/2026 16:20'}];
+  if (t.plate) hist.unshift({text:`Gán xe ${t.plate}${t.driver?' – '+t.driver:''}`, meta:'admin · 01/10/2026 17:05'});
+  if (['transit','done'].includes(t.status)) hist.unshift({text:'Tài xế bắt đầu chuyến', meta:`${t.driver} · ${d}/${m} ${t.time}`});
+  if (t.status==='done') hist.unshift({text:'Đã giao hàng, hoàn tất chứng từ', meta:`${t.driver} · ${d}/${m} ${t.eta}`});
+  if (t.status==='cancel') hist.unshift({text:'Huỷ chuyến – khách hàng đổi lịch', meta:'admin · 02/10/2026 09:12'});
+
+  const tabInfo = `
+    ${needs(t) ? `<div class="alert-sm"><span>Chuyến chưa có ${missing.join(', ')}.</span><button>Gán ngay</button></div>` : ''}
+    <div class="panel">
+      <div class="panel-title">Lộ trình · <span class="mono">${t.routeCode}</span></div>
+      <div class="timeline">
+        <div class="tl-rail"><span class="tl-start"></span><span class="tl-line"></span></div>
+        <div style="padding-bottom:16px"><div style="font-weight:600">${esc(t.from)}</div><div class="tl-addr">${esc(t.fromAddr)}</div></div>
+        <div class="tl-time"><div>${t.time}</div><div>Nhận hàng</div></div>
+        <div class="tl-rail"><span class="tl-end"></span></div>
+        <div><div style="font-weight:600">${esc(t.to)}</div><div class="tl-addr">${esc(t.toAddr)}</div></div>
+        <div class="tl-time"><div>${t.eta}</div><div>Dự kiến giao</div></div>
+      </div>
+    </div>
+    <div class="finance">
+      <div><div class="k">Doanh thu</div><div class="v">${vnd(t.revenue)}</div></div>
+      <div><div class="k">Chi phí</div><div class="v">${vnd(costTotal)}</div></div>
+      <div><div class="k">Lợi nhuận</div><div class="v pos">${vnd(t.revenue-costTotal)}</div></div>
+    </div>
+    <div class="panel"><div class="panel-title">Tài xế &amp; phương tiện</div><div class="kv">
+      <div><div class="k">Xe</div><div class="v mono" style="font-weight:600">${t.plate||'—'}</div></div>
+      <div><div class="k">Nhà xe</div><div class="v">${esc(t.carrier||'—')}</div></div>
+      <div><div class="k">TX chính</div><div class="v">${esc(t.driver||'—')}</div></div>
+      <div><div class="k">TX phụ</div><div class="v">${esc(t.driver2||'—')}</div></div>
+    </div></div>
+    <div class="panel"><div class="panel-title">Thông tin chuyến</div><div class="kv">
+      <div><div class="k">Khách hàng</div><div class="v"><span class="sub-code">${t.custCode}</span> ${esc(t.customer)}</div></div>
+      <div><div class="k">Loại chuyến</div><div class="v">Tiêu chuẩn (STANDARD)</div></div>
+      <div><div class="k">Số lượng</div><div class="v">${t.qty} tấn</div></div>
+      <div><div class="k">Đơn giá</div><div class="v">${vnd(t.revenue)}</div></div>
+      <div><div class="k">Ngày chạy</div><div class="v">${d}/${m}/${y}</div></div>
+      <div><div class="k">Kỳ kế toán</div><div class="v">T${m}/${y}</div></div>
+    </div></div>`;
+  const tabCost = `
+    <div class="panel" style="padding:0">
+      ${(t.costs.length ? t.costs : [['Chưa có khoản chi phí nào','']]).map(c => `<div class="cost-row"><span>${c[0]}</span><span>${c[1]===''?'':vnd(c[1])}</span></div>`).join('')}
+      <div class="cost-total"><span>Tổng chi phí</span><span>${vnd(costTotal)}</span></div>
+    </div>
+    <button class="add-dashed">+ Thêm khoản chi phí</button>`;
+  const tabHist = `<div class="panel">${hist.map(h => `<div class="hist"><div class="tl-rail"><span class="dot"></span><span class="line"></span></div><div class="body"><div>${esc(h.text)}</div><div class="small-muted" style="margin-top:2px">${esc(h.meta)}</div></div></div>`).join('')}</div>`;
+
+  drawer.innerHTML = `<aside class="drawer" aria-label="Chi tiết chuyến">
+    <div class="drawer-head">
+      <div class="drawer-title">
+        <div class="info">
+          <div class="drawer-code"><span class="mono">${t.id}</span>${pill(t.status)}</div>
+          <div class="drawer-route">${esc(t.from)}${arrow(16)}${esc(t.to)}</div>
+          <div class="small-muted" style="font-size:13px">${esc(t.customer)} · ${DAY_LABEL[t.date][1]}</div>
+        </div>
+        <button class="icon-btn" aria-label="Sửa chuyến"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+        <button class="icon-btn" aria-label="Mở toàn trang"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+        <button class="icon-btn" aria-label="Đóng" data-act="close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="steps">${steps}</div>
+      <div class="dtabs" role="tablist" aria-label="Chi tiết">
+        ${[['info','Thông tin'],['cost','Chi phí'],['hist','Lịch sử']].map(([id,l]) => `<button role="tab" data-dtab="${id}" aria-selected="${state.dtab===id}">${l}</button>`).join('')}
+      </div>
+    </div>
+    <div class="drawer-body">${state.dtab==='info'?tabInfo:state.dtab==='cost'?tabCost:tabHist}</div>
+    <div class="drawer-foot">
+      <button class="btn btn-secondary del" aria-label="Xoá chuyến"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+      <button class="btn btn-secondary">In lệnh vận chuyển</button>
+      <button class="btn btn-primary">${s.primary}</button>
+    </div></aside>`;
+}
+function render(){ renderTabs(); renderAttn(); renderTable(); renderBulk(); renderDrawer(); }
+
+/* ===== Events (delegated) ===== */
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-tab],[data-open],[data-group],[data-view],[data-dtab],[data-act]');
+  if (!el) return;
+  const ds = el.dataset;
+  if (ds.tab) state.tab = ds.tab;
+  else if (ds.open) state.sel = ds.open;
+  else if (ds.group) state.closed.has(ds.group) ? state.closed.delete(ds.group) : state.closed.add(ds.group);
+  else if (ds.view) state.grouped = ds.view==='grouped';
+  else if (ds.dtab) state.dtab = ds.dtab;
+  else if (ds.act==='attn') state.attn = !state.attn;
+  else if (ds.act==='clear') state.checked.clear();
+  else if (ds.act==='close') state.sel = null;
+  render();
+});
+document.addEventListener('change', e => {
+  const id = e.target.dataset.check;
+  if (id) { state.checked.has(id) ? state.checked.delete(id) : state.checked.add(id); render(); }
+  if (e.target.id==='checkAll') { const l = visible(); if (e.target.checked) l.forEach(t=>state.checked.add(t.id)); else state.checked.clear(); render(); }
+});
+q.addEventListener('input', e => { state.q = e.target.value.trim(); render(); });
+document.addEventListener('keydown', e => { if (e.key==='Escape' && state.sel) { state.sel=null; render(); } });
+render();
+</script>
+</body>
+</html>
