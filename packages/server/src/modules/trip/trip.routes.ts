@@ -5,6 +5,7 @@ import { requirePermission } from '../../middleware/rbac.js';
 import { TripService } from './trip.service.js';
 import { TripsDTService } from './trips-dt.service.js';
 import type { DTParams } from './trips-dt.service.js';
+import { parseDTParams, multiParam } from '../../shared/index.js';
 
 const router = Router();
 const service = new TripService(prisma);
@@ -16,18 +17,13 @@ router.use(requireAuth);
 router.get('/dt', requirePermission('trip', 'canView'), async (req, res, next) => {
   try {
     const params: DTParams = {
-      draw: Number(req.query.draw) || 1,
-      start: Number(req.query.start) || 0,
-      length: Number(req.query.length) || 100,
-      searchValue: (req.query['search[value]'] as string) || '',
-      orderCol: Number(req.query['order[0][column]']) || 0,
-      orderDir: (req.query['order[0][dir]'] as 'asc' | 'desc') || 'desc',
+      ...parseDTParams(req.query, { defaultLength: 100, defaultDir: 'desc' }),
       customerId: req.query.customerId ? Number(req.query.customerId) : undefined,
       dateFrom: req.query.dateFrom as string | undefined,
       dateTo: req.query.dateTo as string | undefined,
       driverId: req.query.driverId ? Number(req.query.driverId) : undefined,
       supplierId: req.query.supplierId ? Number(req.query.supplierId) : undefined,
-      status: req.query.status as string | undefined,
+      status: multiParam(req.query, 'status'),
     };
     const result = await dtService.query(params);
     res.json(result);

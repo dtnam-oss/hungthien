@@ -3,11 +3,22 @@ import { prisma } from '../../prisma.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { SupplierService } from './supplier.service.js';
+import { parseDTParams, multiParam } from '../../shared/index.js';
+import { SupplierDTService } from './supplier-dt.service.js';
+const dtService = new SupplierDTService(prisma);
 
 const router = Router();
 const service = new SupplierService(prisma);
 
 router.use(requireAuth);
+
+// GET /api/suppliers/dt — DataTables server-side listing (must precede /:id)
+router.get('/dt', requirePermission('supplier', 'canView'), async (req, res, next) => {
+  try {
+    const params = parseDTParams(req.query);
+    res.json(await dtService.query(params, { status: multiParam(req.query, 'status') }));
+  } catch (err) { next(err); }
+});
 
 router.get('/', requirePermission('supplier', 'canView'), async (req, res, next) => {
   try {

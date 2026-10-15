@@ -9,3 +9,5 @@ export type { PaginationParams, PaginatedResult } from './pagination.js';
 export { writeAuditLog, auditDiff } from './audit.js';
 export type { AuditEntry } from './audit.js';
 export { createLogger } from './logger.js';
+export { parseDTParams, parseMulti, multiParam, multiIntParam, multiBoolParam, sortColumn, buildDTResponse, DT_MAX_LENGTH } from './datatable.js';
+export type { DTParams, DTStat, DTResponse, SortDir } from './datatable.js';

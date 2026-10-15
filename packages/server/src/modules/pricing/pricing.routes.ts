@@ -3,11 +3,27 @@ import { prisma } from '../../prisma.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { PricingService } from './pricing.service.js';
+import { parseDTParams, multiParam, multiIntParam } from '../../shared/index.js';
+import { PricingDTService } from './pricing-dt.service.js';
+const dtService = new PricingDTService(prisma);
 
 const router = Router();
 const service = new PricingService(prisma);
 
 router.use(requireAuth);
+
+// GET /api/pricing/dt — DataTables server-side listing (priceType required)
+router.get('/dt', requirePermission('pricing', 'canView'), async (req, res, next) => {
+  try {
+    const params = parseDTParams(req.query);
+    res.json(await dtService.query(params, {
+      priceType: multiParam(req.query, 'priceType'),
+      status: multiParam(req.query, 'status'),
+      customerId: multiIntParam(req.query, 'customerId'),
+      routeId: multiIntParam(req.query, 'routeId'),
+    }));
+  } catch (err) { next(err); }
+});
 
 // GET /api/pricing — list
 router.get('/', requirePermission('pricing', 'canView'), async (req, res, next) => {

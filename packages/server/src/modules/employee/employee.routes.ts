@@ -8,12 +8,31 @@ import { EmployeeService } from './employee.service.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission, stripHiddenColumns } from '../../middleware/rbac.js';
 import { parsePagination, paginatedResponse } from '../../shared/index.js';
+import { parseDTParams, multiParam, multiBoolParam } from '../../shared/index.js';
+import { EmployeeDTService } from './employee-dt.service.js';
+const dtService = new EmployeeDTService(prisma);
 
 const router = Router();
 const service = new EmployeeService(prisma);
 
 // All employee routes require authentication
 router.use(requireAuth);
+
+/**
+ * GET /api/employees/dt — DataTables server-side listing (must precede /:id)
+ */
+router.get('/dt', requirePermission('employee', 'canView'), async (req: Request, res: Response, next) => {
+  try {
+    const params = parseDTParams(req.query);
+    const result = await dtService.query(params, {
+      status: multiParam(req.query, 'status'),
+      isDriver: multiBoolParam(req.query, 'isDriver'),
+      department: multiParam(req.query, 'department'),
+    });
+    const data = await stripHiddenColumns(req.user, 'employee', result.data as unknown as Record<string, unknown>[]);
+    res.json({ ...result, data });
+  } catch (err) { next(err); }
+});
 
 /**
  * GET /api/employees — paginated list with search and filters

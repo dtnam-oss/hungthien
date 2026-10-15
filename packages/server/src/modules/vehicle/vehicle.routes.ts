@@ -3,12 +3,29 @@ import { prisma } from '../../prisma.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { VehicleService } from './vehicle.service.js';
+import { parseDTParams, multiParam, multiIntParam } from '../../shared/index.js';
+import { VehicleDTService } from './vehicle-dt.service.js';
+const dtService = new VehicleDTService(prisma);
 
 const router = Router();
 const service = new VehicleService(prisma);
 
 // All routes require auth + vehicle module permission
 router.use(requireAuth);
+
+// GET /api/vehicles/dt — DataTables server-side listing (must precede /:id)
+router.get('/dt', requirePermission('vehicle', 'canView'), async (req, res, next) => {
+  try {
+    const params = parseDTParams(req.query);
+    res.json(await dtService.query(params, {
+      status: multiParam(req.query, 'status'),
+      ownerType: multiParam(req.query, 'ownerType'),
+      vehicleType: multiParam(req.query, 'vehicleType'),
+      primaryDriverId: multiIntParam(req.query, 'primaryDriverId'),
+      supplierId: multiIntParam(req.query, 'supplierId'),
+    }));
+  } catch (err) { next(err); }
+});
 
 // GET /api/vehicles — list
 router.get('/', requirePermission('vehicle', 'canView'), async (req, res, next) => {

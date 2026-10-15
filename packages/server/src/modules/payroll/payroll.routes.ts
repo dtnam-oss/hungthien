@@ -4,6 +4,9 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { PayrollPeriodService } from './payroll-period.service.js';
 import { PayrollCalcService } from './payroll-calc.service.js';
+import { parseDTParams, multiParam, multiIntParam } from '../../shared/index.js';
+import { PayrollPeriodDTService } from './payroll-period-dt.service.js';
+const dtService = new PayrollPeriodDTService(prisma);
 
 const router = Router();
 const periodService = new PayrollPeriodService(prisma);
@@ -12,6 +15,19 @@ const calcService = new PayrollCalcService(prisma);
 router.use(requireAuth);
 
 // ── Periods ──────────────────────────────────────────────────────
+
+// DataTables server-side listing of periods (must precede /periods/:id)
+router.get('/periods/dt', requirePermission('payroll', 'canView'), async (req, res, next) => {
+  try {
+    const params = parseDTParams(req.query);
+    res.json(await dtService.query(params, {
+      year: multiIntParam(req.query, 'year'),
+      type: multiParam(req.query, 'type'),
+      status: multiParam(req.query, 'status'),
+      regionId: multiIntParam(req.query, 'regionId'),
+    }));
+  } catch (err) { next(err); }
+});
 
 // List periods
 router.get('/periods', requirePermission('payroll', 'canView'), async (req, res, next) => {

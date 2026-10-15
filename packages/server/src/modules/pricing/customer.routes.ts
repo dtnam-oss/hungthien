@@ -4,6 +4,8 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { validatePayload, validateEnum, patchSemantics, writeAuditLog, auditDiff, NotFoundError, ConflictError } from '../../shared/index.js';
 import type { FieldRule } from '../../shared/index.js';
+import { parseDTParams, multiParam } from '../../shared/index.js';
+import { CustomerDTService } from './customer-dt.service.js';
 
 const router = Router();
 
@@ -34,51 +36,13 @@ router.get('/next-code', requirePermission('pricing', 'canView'), async (_req, r
   } catch (err) { next(err); }
 });
 
-const SORTABLE_COLUMNS = ['code', 'name', 'taxCode', 'email', 'phone', 'status'] as const;
+const dtService = new CustomerDTService(prisma);
 
 // DataTable server-side endpoint
 router.get('/dt', requirePermission('pricing', 'canView'), async (req, res, next) => {
   try {
-    const draw = Number(req.query.draw) || 1;
-    const start = Number(req.query.start) || 0;
-    const length = Number(req.query.length) || 50;
-    const searchValue = (req.query['search[value]'] as string) || '';
-    const orderCol = Number(req.query['order[0][column]']) || 0;
-    const orderDir = (req.query['order[0][dir]'] as 'asc' | 'desc') || 'asc';
-    const statusFilter = req.query.status as string | undefined;
-
-    // Build where
-    const where: any = {};
-    if (searchValue) {
-      where.OR = [
-        { code: { contains: searchValue, mode: 'insensitive' } },
-        { name: { contains: searchValue, mode: 'insensitive' } },
-        { taxCode: { contains: searchValue, mode: 'insensitive' } },
-        { email: { contains: searchValue, mode: 'insensitive' } },
-        { phone: { contains: searchValue, mode: 'insensitive' } },
-      ];
-    }
-    if (statusFilter) where.status = statusFilter;
-
-    // Sort
-    const sortCol = SORTABLE_COLUMNS[orderCol] || 'name';
-    const orderBy = { [sortCol]: orderDir };
-
-    const [data, recordsFiltered, recordsTotal, statusStats] = await Promise.all([
-      prisma.customer.findMany({ where, skip: start, take: length, orderBy }),
-      prisma.customer.count({ where }),
-      prisma.customer.count(),
-      prisma.customer.groupBy({ by: ['status'], _count: { status: true } }),
-    ]);
-
-    res.json({
-      draw,
-      recordsTotal,
-      recordsFiltered,
-      data,
-      statusStats: statusStats.map((s) => ({ status: s.status, count: s._count.status })),
-      customerStats: [],
-    });
+    const params = parseDTParams(req.query, { defaultLength: 50 });
+    res.json(await dtService.query(params, { status: multiParam(req.query, 'status') }));
   } catch (err) { next(err); }
 });
 

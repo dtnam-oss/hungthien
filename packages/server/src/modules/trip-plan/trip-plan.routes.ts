@@ -3,11 +3,27 @@ import { prisma } from '../../prisma.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { TripPlanService } from './trip-plan.service.js';
+import { parseDTParams, multiBoolParam, multiIntParam } from '../../shared/index.js';
+import { TripPlanDTService } from './trip-plan-dt.service.js';
+const dtService = new TripPlanDTService(prisma);
 
 const router = Router();
 const service = new TripPlanService(prisma);
 
 router.use(requireAuth);
+
+// DataTables server-side listing (must precede /:id)
+router.get('/dt', requirePermission('trip', 'canView'), async (req, res, next) => {
+  try {
+    const params = parseDTParams(req.query);
+    res.json(await dtService.query(params, {
+      isActive: multiBoolParam(req.query, 'isActive'),
+      customerId: multiIntParam(req.query, 'customerId'),
+      vehicleId: multiIntParam(req.query, 'vehicleId'),
+      driverId: multiIntParam(req.query, 'driverId'),
+    }));
+  } catch (err) { next(err); }
+});
 
 // List
 router.get('/', requirePermission('trip', 'canView'), async (req, res) => {

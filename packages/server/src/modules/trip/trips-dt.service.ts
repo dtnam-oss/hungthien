@@ -8,23 +8,20 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
+import { buildDTResponse, DT_MAX_LENGTH } from '../../shared/datatable.js';
+import type { DTParams as BaseDTParams } from '../../shared/datatable.js';
 
 /* ── DataTables request / response types ──────────────────────────── */
 
-export interface DTParams {
-  draw: number;
-  start: number;
-  length: number;
-  searchValue: string;
-  orderCol: number;
-  orderDir: 'asc' | 'desc';
+export interface DTParams extends BaseDTParams {
   // Custom filters
   customerId?: number;
   dateFrom?: string;
   dateTo?: string;
   driverId?: number;
   supplierId?: number;
-  status?: string;
+  /** Multi-value; applied to rows/count but not to statusStats. */
+  status?: string[];
 }
 
 export interface DTRow {
@@ -92,51 +89,59 @@ function buildOrderBy(colIdx: number, dir: 'asc' | 'desc'): OrderByInput {
   }
 }
 
+/* ── WHERE builder ────────────────────────────────────────────────── */
+
+/** `includeStatus=false` yields the base set used for statusStats. */
+export function buildWhere(params: DTParams, includeStatus = true): Prisma.TripWhereInput {
+  const where: Prisma.TripWhereInput = {};
+
+  if (includeStatus && params.status?.length) {
+    where.status = { in: params.status };
+  }
+  if (params.customerId) {
+    where.customerId = params.customerId;
+  }
+  if (params.driverId) {
+    where.OR = [
+      { primaryDriverId: params.driverId },
+      { secondaryDriverId: params.driverId },
+    ];
+  }
+  // Nhà xe: Trip → Vehicle → Supplier
+  if (params.supplierId) {
+    where.Vehicle = { supplierId: params.supplierId };
+  }
+  if (params.dateFrom || params.dateTo) {
+    const tripDate: Prisma.DateTimeFilter = {};
+    if (params.dateFrom) tripDate.gte = new Date(params.dateFrom);
+    if (params.dateTo) tripDate.lte = new Date(params.dateTo);
+    where.tripDate = tripDate;
+  }
+  if (params.search) {
+    where.AND = [{
+      OR: [
+        { tripCode: { contains: params.search, mode: 'insensitive' } },
+        { Customer: { name: { contains: params.search, mode: 'insensitive' } } },
+        { Route: { name: { contains: params.search, mode: 'insensitive' } } },
+        { Vehicle: { plateNumber: { contains: params.search, mode: 'insensitive' } } },
+      ],
+    }];
+  }
+  return where;
+}
+
 /* ── Service ──────────────────────────────────────────────────────── */
 
 export class TripsDTService {
   constructor(private prisma: PrismaClient) {}
 
   async query(params: DTParams): Promise<DTResponse> {
-    // Clamp length to prevent pulling entire table
-    const length = Math.min(Math.max(Number(params.length) || 100, 1), 500);
-    const start = Math.max(Number(params.start) || 0, 0);
+    const length = Math.min(Math.max(params.length || 100, 1), DT_MAX_LENGTH);
+    const start = Math.max(params.start || 0, 0);
 
-    // ── Build WHERE clause ──────────────────────────────────────
-    const where: Prisma.TripWhereInput = {};
-
-    if (params.status) {
-      where.status = params.status;
-    }
-    if (params.customerId) {
-      where.customerId = params.customerId;
-    }
-    if (params.driverId) {
-      where.OR = [
-        { primaryDriverId: params.driverId },
-        { secondaryDriverId: params.driverId },
-      ];
-    }
-    // Nhà xe: Trip → Vehicle → Supplier
-    if (params.supplierId) {
-      where.Vehicle = { supplierId: params.supplierId };
-    }
-    if (params.dateFrom || params.dateTo) {
-      const tripDate: Prisma.DateTimeFilter = {};
-      if (params.dateFrom) tripDate.gte = new Date(params.dateFrom);
-      if (params.dateTo) tripDate.lte = new Date(params.dateTo);
-      where.tripDate = tripDate;
-    }
-    if (params.searchValue) {
-      where.AND = [{
-        OR: [
-          { tripCode: { contains: params.searchValue, mode: 'insensitive' } },
-          { Customer: { name: { contains: params.searchValue, mode: 'insensitive' } } },
-          { Route: { name: { contains: params.searchValue, mode: 'insensitive' } } },
-          { Vehicle: { plateNumber: { contains: params.searchValue, mode: 'insensitive' } } },
-        ],
-      }];
-    }
+    const where = buildWhere(params);
+    // statusStats ignore the status filter so the rail keeps all its counts
+    const whereBase = buildWhere(params, false);
 
     // ── OrderBy ─────────────────────────────────────────────────
     const orderBy = buildOrderBy(params.orderCol, params.orderDir);
@@ -172,7 +177,7 @@ export class TripsDTService {
         this.prisma.trip.count(),
         this.prisma.trip.groupBy({
           by: ['status'],
-          where,
+          where: whereBase,
           _count: true,
         }),
         this.prisma.trip.groupBy({
@@ -233,13 +238,13 @@ export class TripsDTService {
       count: c._count,
     }));
 
-    return {
+    return buildDTResponse({
       draw: params.draw,
       recordsTotal,
       recordsFiltered,
       data,
-      customerStats,
       statusStats,
-    };
+      extra: { customerStats },
+    });
   }
 }
