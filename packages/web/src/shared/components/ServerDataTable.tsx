@@ -234,6 +234,8 @@ export function ServerDataTable<T extends object>({
   if (renderBody) {
     body = renderBody({ rows, columns, startIndex: table.start, selected, toggle, onOpen });
   } else if (groups) {
+    // Số thứ tự chạy theo thứ tự hiển thị (sau khi nhóm), không theo thứ tự server trả về
+    let displayIndex = 0;
     body = groups.map(({ group, items }) => {
       const isCollapsed = collapsed.has(group.key);
       return [
@@ -247,7 +249,7 @@ export function ServerDataTable<T extends object>({
             </button>
           </td>
         </tr>,
-        ...(isCollapsed ? [] : items.map(({ row, index }) => renderRow(row, index))),
+        ...(isCollapsed ? [] : items.map(({ row }) => renderRow(row, displayIndex++))),
       ];
     });
   } else {

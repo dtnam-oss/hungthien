@@ -70,6 +70,7 @@ export function TripCostTab({ detail, editable, onAdd, onDelete }: Props) {
               <SearchableMultiSelect
                 mode="single"
                 searchable="auto"
+                allowClear={false}
                 options={Object.entries(COST_LABELS).map(([k, v]) => ({ value: k, label: v }))}
                 value={form.costType}
                 onChange={(v) => setForm({ ...form, costType: String(v ?? '') })}

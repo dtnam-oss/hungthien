@@ -26,6 +26,7 @@ Design system v3 (token, lớp component, dark mode, quyết định bố cục 
 
 - Chuyển sáng/tối: nút trên topbar (lưu `localStorage['ht-theme']`).
 - Tìm nhanh chức năng: `Ctrl K`.
+- Mọi bảng danh sách dùng `ServerDataTable` (DataTables server-side qua `GET /api/<module>/dt`, rail đếm trạng thái, 50/100/200 dòng/trang); mọi dropdown dùng `SearchableMultiSelect` (tìm nhanh, chọn nhiều khi lọc).
 
 ## Kiểm tra
 

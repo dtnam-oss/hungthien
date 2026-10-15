@@ -39,6 +39,10 @@ npx oxlint src                          # 0 error
 npm run build                           # tsc -b && vite build
 ```
 
+## Bảng dữ liệu server-side
+
+Mọi trang danh sách gọi `GET /api/<module>/dt` theo giao thức DataTables: `draw`, `start`, `length` (≤ 500), `search[value]`, `order[0][column]` (chỉ số trong `SORTABLE_COLUMNS` của module), `order[0][dir]`, cộng bộ lọc nhận nhiều giá trị dạng CSV (`status=PLANNED,DISPATCHED`). Response: `{ draw, recordsTotal, recordsFiltered, data, statusStats }`. Helper chung: `packages/server/src/shared/datatable.ts`; mỗi module có `<module>-dt.service.ts` kèm test `SORTABLE_COLUMNS`. Web dùng `shared/components/ServerDataTable.tsx` + hook `useServerTable`.
+
 ## Giao diện
 
 - Design system, token, lớp component và quyết định bố cục: [design/ui-design-system.md](design/ui-design-system.md).

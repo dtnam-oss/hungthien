@@ -239,7 +239,7 @@ export function TripPlanListPage() {
     },
     {
       key: 'isActive', label: 'Trạng thái', sortIndex: 3, align: 'center', width: 120,
-      render: (p) => (
+      render: (p) => canEdit ? (
         <span onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
@@ -250,9 +250,11 @@ export function TripPlanListPage() {
             <StatusPill status={p.isActive ? 'ACTIVE' : 'INACTIVE'} size="sm" />
           </button>
         </span>
+      ) : (
+        <StatusPill status={p.isActive ? 'ACTIVE' : 'INACTIVE'} size="sm" />
       ),
     },
-  ], [toggleActive]);
+  ], [toggleActive, canEdit]);
 
   const filters = useMemo(
     () => ({ status: statusFilter, customerId: customerFilter, vehicleId: vehicleFilter, driverId: driverFilter }),

@@ -228,7 +228,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
               <Input type="text" value={tripCode} onChange={(e) => setTripCode(e.target.value)} />
             </Field>
             <Field label="Loại chuyến" required>
-              <SearchableMultiSelect mode="single" searchable="auto"
+              <SearchableMultiSelect mode="single" searchable="auto" allowClear={false}
                 options={TRIP_TYPES}
                 value={tripType}
                 onChange={(v) => setTripType(v)}

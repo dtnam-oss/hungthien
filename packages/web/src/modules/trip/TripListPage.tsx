@@ -98,6 +98,8 @@ export function TripListPage() {
   const attnCount = useMemo(() => pageRows.filter(needsAttention).length, [pageRows]);
   const rowFilter = attnFilter ? needsAttention : undefined;
   const visibleRows = useMemo(() => (attnFilter ? pageRows.filter(needsAttention) : pageRows), [pageRows, attnFilter]);
+  // Bật/tắt bộ lọc "cần xử lý" đổi tập hàng hiển thị → bỏ chọn để select-all không giữ hàng đang ẩn
+  useEffect(() => { setSelected([]); }, [attnFilter]);
 
   // Tập chọn chỉ có nghĩa với các dòng đang hiển thị: đổi trang / bộ lọc / tải lại → bỏ chọn,
   // trừ khi một thao tác hàng loạt yêu cầu giữ lại các chuyến lỗi (keepSelectionRef)
