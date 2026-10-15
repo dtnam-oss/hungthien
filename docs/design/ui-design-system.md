@@ -17,6 +17,7 @@ Primitive React nằm trong [`packages/web/src/shared/ui/`](../../packages/web/s
 | Nhóm | Var | Giá trị |
 |---|---|---|
 | Nền | `--bg` / `--surface` / `--surface-2` / `--surface-3` / `--track` | `#F6F6F7` / `#FFF` / `#FAFAFB` / `#F2F2F4` / `#EDEDF0` |
+| Zebra | `--row-alt` | `#FAFAFB` (sáng) / `#1A1B20` (tối) |
 | Viền | `--border` / `--border-light` / `--border-input` / `--border-strong` | `#E7E7EA` / `#F0F0F2` / `#E0E0E4` / `#D4D4D8` |
 | Chữ | `--text` / `--text-2` / `--text-3` / `--muted` / `--muted-2` / `--faint` | `#18181B` / `#27272A` / `#3F3F46` / `#5F6068` / `#6B6C75` / `#8A8B93` |
 | Brand | `--accent` / `--accent-strong` / `--accent-light` / `--accent-hover` | `#D92D20` / `#B42318` / `#FEF3F2` / `#FEE4E2` |
@@ -49,7 +50,7 @@ Utility Tailwind theo token: `bg-surface`, `bg-surface-2`, `text-ink`, `text-mut
 | Form | `.input` / `.select` / `.textarea` / `.checkbox` (+ `-sm`, `-error`) · `.field` + `.field-label` + `.field-hint` + `.field-error` · `.form-grid` (2 cột, `.field-full` chiếm 2) · `.check-label` |
 | Toolbar | `.search` (icon + input) · `.filter` (select nhỏ, `.is-active` khi có giá trị) · `.toolbar` · `.toolbar-spacer` |
 | Card | `.card` · `.card-head` + `.card-title` · `.card-body` · `.card-foot` · `.sub-card` + `.sub-card-title` (card trắng trong drawer) · `.section-title` (11px uppercase) |
-| Bảng | `.tbl` (+ `.tbl-hover`, `.tbl-click`, `.tbl-compact`) · `th.sortable` · `td.num` / `.center` · `.cell-title` / `.cell-sub` / `.cell-mono` · `tr.is-selected` · `.tbl-group-row` · `.tbl-empty` · `.foot` + `.pager` |
+| Bảng | `.tbl` (+ `.tbl-hover`, `.tbl-click`, `.tbl-compact`, `.tbl-zebra`, `.tbl-dense`) · `th.sortable` · `td.num` / `.center` · `.cell-title` / `.cell-sub` / `.cell-mono` · `tr.is-selected` · `.tbl-group-row` · `.tbl-empty` · `.foot` + `.pager` |
 | Tabs | `.seg` + `.seg-tab` + `.seg-count` (segmented) · `.tabs` (gạch đỏ dưới) |
 | Trạng thái | `.pill` + `.pill-info/violet/warn/success/neutral/danger/brand/outline` (+ `<i>` chấm, `.pill-sm`) · `.plate` (biển số) · `.tag-new` · `.avatar` |
 | Chi tiết | `.kv` (grid 2 cột; `.kv-1`, `.kv-3`) với `.k` / `.v` / `.full` · `.stat-card` · `.stat-inline` · `.timeline` |
@@ -88,6 +89,41 @@ import { formatMoney, formatDate, formatDateTime, toInputDate, todayInputDate, e
   </div>
 </div>
 ```
+
+## Bảng dữ liệu (`ServerDataTable`)
+
+Một component cho mọi bảng danh sách server-side (`shared/components/ServerDataTable.tsx`, hook `shared/hooks/useServerTable.ts`). Giao thức `GET <module>/dt`: `draw`, `start`, `length` (50/100/200), `search[value]`, `order[0][column|dir]` (chỉ số trong `SORTABLE_COLUMNS` của module server), mọi bộ lọc có thể nhiều giá trị dạng CSV (`status=A,B`); trả `{ draw, recordsTotal, recordsFiltered, data, statusStats }`.
+
+```tsx
+<div className="page page-fill">
+  <PageHeader title="Xe" … />
+  <ServerDataTable<Vehicle>
+    endpoint="/vehicles/dt" title="Danh sách xe" columns={COLUMNS}
+    filters={{ status, type }}                       {/* mảng → CSV, mảng rỗng bị bỏ */}
+    rail={{ statuses: ['ACTIVE', 'MAINTENANCE'], value: status, onChange: setStatus }}
+    toolbar={<SearchableMultiSelect mode="multi" size="sm" … />}
+    actions={<Button variant="primary">Thêm</Button>}
+    selectedKey={openId} onRowClick={open} apiRef={tableRef}
+  />
+</div>
+```
+
+- Cột: `{ key, label, sortIndex?, width?, minWidth?, align?, render?, className?, hideBelow?: 'md'|'lg'|'xl' }`. `sortIndex` khớp `SORTABLE_COLUMNS`; cột không có `sortIndex` không sort. Mặc định sort theo cột 0, giảm dần.
+- Khác: `groupBy` (nhóm 1 cấp, thu gọn được), `renderBody` (tự vẽ `<tbody>`, ví dụ nhóm 2 cấp), `selectable` + `selected`/`onSelectedChange` (chọn tất cả = các dòng đang hiển thị), `density` (`dense` mặc định ~32px/dòng, `comfortable`), `rowNumber` (STT liên tục qua các trang), `aside` (panel cạnh card trong cùng `.workspace`), `apiRef.current.reload()` để tải lại không remount.
+- Bố cục: `.workspace` = rail 228px (`StatusRail`) + card (`.workspace-card`: toolbar · `.tbl-area` > `.tbl-wrap` cuộn, thead dính · `TableFooter`). Trang dùng `.page page-fill` nên bảng cao đúng phần viewport còn lại, chỉ `.tbl-wrap` cuộn.
+- Rail: đếm theo `statusStats` (server bỏ qua bộ lọc trạng thái khi đếm); bấm chip bật/tắt từng trạng thái (chọn nhiều), "Tổng" = bỏ lọc. Dưới 1024px rail thành hàng chip cuộn ngang (`.rail-chips`).
+- Bảng: `.tbl-zebra` (token `--row-alt`; `is-selected` và hover luôn thắng zebra), `.tbl-dense` (td 6/10px, 13px). Dưới 768px toolbar wrap và cột `hideBelow` bị ẩn (`.hide-md/.hide-lg/.hide-xl`).
+- Trạng thái: đang tải giữ dòng cũ + thanh `.tbl-progress`; lỗi → `Alert` trong card kèm "Thử lại"; rỗng → `EmptyState`.
+- Footer: "Hiển thị a đến b / n kết quả (lọc từ N)", chọn 50/100/200 dòng, `Pagination showEdges` (Đầu ‹ 1 2 … › Cuối).
+
+## Dropdown (`SearchableMultiSelect`)
+
+`shared/components/SearchableMultiSelect.tsx`: một dropdown cho mọi nơi — `mode="multi"` cho bộ lọc, `mode="single"` cho form (`SearchableSelect` là lớp mỏng trên `mode="single"`, props giữ nguyên).
+
+- Props: `options[{ value, label, sublabel?, disabled? }]`, `value` (`V[]` hoặc `V | ''`), `onChange`, `placeholder`, `searchable` (`true`/`false`/`'auto'` = chỉ hiện ô tìm khi > 8 lựa chọn), `allowClear`, `size`, `error`, `maxVisible` (200, vượt thì nhắc nhập để lọc thêm), `renderOption`.
+- Giao diện: trigger dạng `.input` hiện nhãn hoặc "n đã chọn"; menu `.menu.ms-menu` có ô tìm, hàng checkbox (radio ở `single`, chọn xong đóng), "Chọn tất cả (đang lọc)" / "Bỏ chọn" ở `multi`. Lớp `.ms-*`.
+- Bàn phím: ↑↓ di chuyển, Space/Enter chọn, Esc đóng (chặn lan lên modal/drawer), Tab đóng. ARIA: `role="listbox"`, `aria-multiselectable`, `aria-activedescendant`.
+- Bộ lọc nhiều giá trị truyền thẳng vào `filters` của `ServerDataTable` (mảng → CSV).
 
 ## Responsive
 

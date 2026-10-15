@@ -6,6 +6,8 @@ export interface PaginationProps {
   onChange: (page: number) => void;
   /** Số trang hiện mỗi bên trang hiện tại */
   siblings?: number;
+  /** Thêm nút Đầu / Cuối */
+  showEdges?: boolean;
 }
 
 /** Danh sách số trang có dấu "…": 1 … 4 5 6 … 366 */
@@ -22,11 +24,12 @@ function pageItems(page: number, total: number, siblings: number): (number | 'ga
 }
 
 /** Phân trang số trang, dùng trong `.foot` */
-export function Pagination({ page, totalPages, onChange, siblings = 1 }: PaginationProps) {
+export function Pagination({ page, totalPages, onChange, siblings = 1, showEdges }: PaginationProps) {
   const total = Math.max(1, totalPages);
   const current = Math.min(Math.max(1, page), total);
   return (
     <nav className="pager" aria-label="Phân trang">
+      {showEdges && <button type="button" aria-label="Trang đầu" className="pager-edge" onClick={() => onChange(1)} disabled={current <= 1}>Đầu</button>}
       <button type="button" aria-label="Trang trước" onClick={() => onChange(current - 1)} disabled={current <= 1}><ChevronLeft /></button>
       {pageItems(current, total, siblings).map((item, i) =>
         item === 'gap'
@@ -34,6 +37,7 @@ export function Pagination({ page, totalPages, onChange, siblings = 1 }: Paginat
           : <button key={item} type="button" onClick={() => onChange(item)} aria-current={item === current ? 'page' : undefined}>{item}</button>,
       )}
       <button type="button" aria-label="Trang sau" onClick={() => onChange(current + 1)} disabled={current >= total}><ChevronRight /></button>
+      {showEdges && <button type="button" aria-label="Trang cuối" className="pager-edge" onClick={() => onChange(total)} disabled={current >= total}>Cuối</button>}
     </nav>
   );
 }

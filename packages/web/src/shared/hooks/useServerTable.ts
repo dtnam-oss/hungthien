@@ -5,9 +5,12 @@ export interface ServerTableColumn {
   sortable: boolean;
 }
 
+/** Giá trị lọc: mảng được gửi dạng CSV (), mảng rỗng bị bỏ qua */
+export type ServerTableFilterValue = string | number | (string | number)[] | undefined;
+
 export interface UseServerTableParams {
   endpoint: string;
-  filters: Record<string, string | number | undefined>;
+  filters: Record<string, ServerTableFilterValue>;
   columns: ServerTableColumn[];
   defaultLength?: number;
 }
@@ -17,8 +20,8 @@ interface DTResponse<T> {
   recordsTotal: number;
   recordsFiltered: number;
   data: T[];
-  customerStats: { id: number; name: string; count: number }[];
-  statusStats: { status: string; count: number }[];
+  customerStats?: { id: number; name: string; count: number }[];
+  statusStats?: { status: string; count: number }[];
 }
 
 export interface UseServerTableReturn<T> {
@@ -84,7 +87,7 @@ export function useServerTable<T>(params: UseServerTableParams): UseServerTableR
     setError(null);
 
     try {
-      const parsedFilters = JSON.parse(filtersKey) as Record<string, string | number | undefined>;
+      const parsedFilters = JSON.parse(filtersKey) as Record<string, ServerTableFilterValue>;
       const queryParams: Record<string, string | number> = {
         draw,
         start,
@@ -94,7 +97,9 @@ export function useServerTable<T>(params: UseServerTableParams): UseServerTableR
         'order[0][dir]': orderDir,
       };
       for (const [key, value] of Object.entries(parsedFilters)) {
-        if (value !== undefined && value !== '') {
+        if (Array.isArray(value)) {
+          if (value.length > 0) queryParams[key] = value.join(',');
+        } else if (value !== undefined && value !== null && value !== '') {
           queryParams[key] = value;
         }
       }
@@ -109,8 +114,8 @@ export function useServerTable<T>(params: UseServerTableParams): UseServerTableR
         setData(res.data.data);
         setRecordsTotal(res.data.recordsTotal);
         setRecordsFiltered(res.data.recordsFiltered);
-        setCustomerStats(res.data.customerStats);
-        setStatusStats(res.data.statusStats);
+        setCustomerStats(res.data.customerStats ?? []);
+        setStatusStats(res.data.statusStats ?? []);
         setLoading(false);
       }
     } catch (err: unknown) {
@@ -169,10 +174,11 @@ export function useServerTable<T>(params: UseServerTableParams): UseServerTableR
     setDrawCounter((d) => d + 1);
   }, [columns, orderCol, orderDir]);
 
-  // Length: immediate, reset to page 1
+  // Length: immediate, giữ start là bội của length mới để trang hiện tại vẫn hợp lệ
   const setLength = useCallback((n: number) => {
+    if (!Number.isFinite(n) || n <= 0) return;
     setLengthState(n);
-    setStart(0);
+    setStart((s) => Math.floor(s / n) * n);
     setDrawCounter((d) => d + 1);
   }, []);
 
