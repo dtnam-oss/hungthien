@@ -5,12 +5,13 @@ import api from '../../shared/api';
 import { useAuth } from '../../shared/auth-context';
 import { ServerDataTable } from '../../shared/components/ServerDataTable';
 import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
-import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
+import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import {
   PageHeader, SubCard, Button, StatusPill, Pill,
-  Alert, LoadingBlock, Field, FormGrid, Input, Select, Textarea,
+  Alert, LoadingBlock, Field, FormGrid, Input, Textarea,
 } from '../../shared/ui';
 import { errorMessage } from '../../shared/format';
 
@@ -266,9 +267,7 @@ export function SupplierListPage() {
               />
               {isEditing ? (
                 <EditFieldRow label="Trạng thái">
-                  <select className={EDIT_SELECT_CLASS} value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value as SupplierStatus })}>
-                    {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={STATUS_OPTIONS} value={editForm.status ?? ""} onChange={(v) => setEditForm({ ...editForm, status: v as SupplierStatus })} />
                 </EditFieldRow>
               ) : (
                 <FieldRow label="Trạng thái" value={<StatusPill status={detail.status} label={STATUS_LABELS[detail.status]} />} />
@@ -387,9 +386,7 @@ export function SupplierListPage() {
                 />
               </Field>
               <Field label="Trạng thái">
-                <Select value={createForm.status} onChange={(e) => setCreateForm({ ...createForm, status: e.target.value as SupplierStatus })}>
-                  {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
+                <SearchableMultiSelect mode="single" allowClear={false} options={STATUS_OPTIONS} value={createForm.status ?? ""} onChange={(v) => setCreateForm({ ...createForm, status: v as SupplierStatus })} />
               </Field>
             </FormGrid>
           </SubCard>

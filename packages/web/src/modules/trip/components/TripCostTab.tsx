@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { Button, IconButton, Input, Select } from '../../../shared/ui';
+import { Button, IconButton, Input } from '../../../shared/ui';
+import { SearchableMultiSelect } from '../../../shared/components/SearchableMultiSelect';
 import { formatMoney } from '../../../shared/format';
 import { COST_LABELS } from './types';
 import type { NewCostInput, TripDetailData } from './types';
@@ -66,9 +67,14 @@ export function TripCostTab({ detail, editable, onAdd, onDelete }: Props) {
         <div className="px-4 pb-4">
           {adding ? (
             <div className="flex flex-col gap-2">
-              <Select value={form.costType} onChange={(e) => setForm({ ...form, costType: e.target.value })} aria-label="Loại chi phí">
-                {Object.entries(COST_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </Select>
+              <SearchableMultiSelect
+                mode="single"
+                searchable="auto"
+                options={Object.entries(COST_LABELS).map(([k, v]) => ({ value: k, label: v }))}
+                value={form.costType}
+                onChange={(v) => setForm({ ...form, costType: String(v ?? '') })}
+                placeholder="Loại chi phí"
+              />
               <Input type="number" min={0} value={form.amount} placeholder="Số tiền (VND)" aria-label="Số tiền"
                 onChange={(e) => setForm({ ...form, amount: e.target.value })} />
               <Input type="text" value={form.description} placeholder="Mô tả" aria-label="Mô tả"

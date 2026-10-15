@@ -8,18 +8,19 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
-import { buildDTResponse, DT_MAX_LENGTH } from '../../shared/datatable.js';
+import { buildDTResponse, DT_MAX_LENGTH, sortColumn } from '../../shared/datatable.js';
 import type { DTParams as BaseDTParams } from '../../shared/datatable.js';
 
 /* ── DataTables request / response types ──────────────────────────── */
 
 export interface DTParams extends BaseDTParams {
   // Custom filters
-  customerId?: number;
+  /** Multi-value filters (IN) */
+  customerId?: number[];
   dateFrom?: string;
   dateTo?: string;
-  driverId?: number;
-  supplierId?: number;
+  driverId?: number[];
+  supplierId?: number[];
   /** Multi-value; applied to rows/count but not to statusStats. */
   status?: string[];
 }
@@ -61,31 +62,22 @@ export interface DTResponse {
 }
 
 /* ── Column index → Prisma orderBy map ────────────────────────────
- * MUST match the column order on the frontend table:
- * 0=# (row number, no sort)
- * 1=Tuyến        → Route.name
- * 2=Khách hàng   → Customer.name
- * 3=Biển số      → Vehicle.plateNumber
- * 4=SL chi phí   → computed, no DB sort
- * 5=Trạng thái   → status
- * 6=Nhà xe       → Vehicle.Supplier.name
- * 7=Thao tác     → no sort
- *
- * Adding/removing a UI column WITHOUT updating this array will silently
- * mis-sort. Unsortable columns fall back to tripDate desc.
+ * Index = position in SORTABLE_COLUMNS; the web table passes the same index
+ * via sortIndex. Keep the array contiguous. Unknown index → tripDate desc.
  * ─────────────────────────────────────────────────────────────────── */
+
+export const SORTABLE_COLUMNS = ['route', 'customer', 'plate', 'status', 'supplier'] as const;
 
 type OrderByInput = Prisma.TripOrderByWithRelationInput;
 
-function buildOrderBy(colIdx: number, dir: 'asc' | 'desc'): OrderByInput {
-  switch (colIdx) {
-    case 1: return { Route: { name: dir } };
-    case 2: return { Customer: { name: dir } };
-    case 3: return { Vehicle: { plateNumber: dir } };
-    case 5: return { status: dir };
-    // case 6: Vehicle→Supplier nested sort — Prisma supports 2-level relation orderBy
-    case 6: return { Vehicle: { Supplier: { name: dir } } } as OrderByInput;
-    default: return { tripDate: 'desc' };
+export function buildOrderBy(colIdx: number, dir: 'asc' | 'desc'): OrderByInput[] {
+  switch (sortColumn(SORTABLE_COLUMNS, colIdx)) {
+    case 'route': return [{ Route: { name: dir } }, { id: 'desc' }];
+    case 'customer': return [{ Customer: { name: dir } }, { id: 'desc' }];
+    case 'plate': return [{ Vehicle: { plateNumber: dir } }, { id: 'desc' }];
+    case 'status': return [{ status: dir }, { id: 'desc' }];
+    case 'supplier': return [{ Vehicle: { Supplier: { name: dir } } }, { id: 'desc' }];
+    default: return [{ tripDate: 'desc' }, { id: 'desc' }];
   }
 }
 
@@ -98,18 +90,18 @@ export function buildWhere(params: DTParams, includeStatus = true): Prisma.TripW
   if (includeStatus && params.status?.length) {
     where.status = { in: params.status };
   }
-  if (params.customerId) {
-    where.customerId = params.customerId;
+  if (params.customerId?.length) {
+    where.customerId = { in: params.customerId };
   }
-  if (params.driverId) {
+  if (params.driverId?.length) {
     where.OR = [
-      { primaryDriverId: params.driverId },
-      { secondaryDriverId: params.driverId },
+      { primaryDriverId: { in: params.driverId } },
+      { secondaryDriverId: { in: params.driverId } },
     ];
   }
   // Nhà xe: Trip → Vehicle → Supplier
-  if (params.supplierId) {
-    where.Vehicle = { supplierId: params.supplierId };
+  if (params.supplierId?.length) {
+    where.Vehicle = { supplierId: { in: params.supplierId } };
   }
   if (params.dateFrom || params.dateTo) {
     const tripDate: Prisma.DateTimeFilter = {};

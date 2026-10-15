@@ -16,7 +16,7 @@ export function AttentionBanner({ count, filtering, onToggle }: Props) {
     <div className="alert alert-warn items-center" role="status">
       <AlertTriangle />
       <span className="flex-1">
-        <strong>{count} chuyến</strong> sắp chạy chưa gán đủ xe, tài xế hoặc nhà xe.
+        <strong>{count} chuyến</strong> trên trang này sắp chạy chưa gán đủ xe, tài xế hoặc nhà xe.
       </span>
       <Button size="sm" onClick={onToggle}>
         {filtering ? 'Hiện tất cả' : 'Lọc các chuyến này'}

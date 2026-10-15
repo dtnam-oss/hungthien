@@ -73,7 +73,11 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
     return options.filter((o) => normalize(`${o.label} ${o.sublabel ?? ''}`).includes(q));
   }, [options, query]);
   const visible = filtered.length > maxVisible ? filtered.slice(0, maxVisible) : filtered;
-  const activeIndex = Math.min(active, Math.max(visible.length - 1, 0));
+  // Hàng "— Bỏ chọn —" đầu danh sách (chỉ chế độ single, khi chưa lọc)
+  const hasClearRow = props.mode === "single" && allowClear && !query.trim();
+  const rowOffset = hasClearRow ? 1 : 0;
+  const rowCount = visible.length + rowOffset;
+  const activeIndex = Math.min(active, Math.max(rowCount - 1, 0));
   const optionId = (i: number) => `${uid}-opt-${i}`;
 
   const close = useCallback((refocus: boolean) => {
@@ -85,7 +89,7 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
   const openMenu = () => {
     if (disabled) return;
     const firstSelected = options.findIndex((o) => selectedKeys.has(String(o.value)));
-    setActive(firstSelected >= 0 && firstSelected < maxVisible ? firstSelected : 0);
+    setActive(firstSelected >= 0 && firstSelected < maxVisible ? firstSelected + (props.mode === "single" && allowClear ? 1 : 0) : (props.mode === "single" && allowClear ? 1 : 0));
     setOpen(true);
   };
 
@@ -145,9 +149,17 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
     else props.onChange('', undefined);
   };
 
+  const pickRow = (i: number) => {
+    if (hasClearRow && i === 0) { clearAll(); close(true); return; }
+    const option = visible[i - rowOffset];
+    if (option) pick(option);
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!open) {
-      if (e.key === 'ArrowDown' && e.target === triggerRef.current) { e.preventDefault(); openMenu(); }
+      if (e.target !== triggerRef.current) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); openMenu(); }
+      else if ((e.key === 'Backspace' || e.key === 'Delete') && canClear) { e.preventDefault(); clearAll(); }
       return;
     }
     switch (e.key) {
@@ -159,7 +171,7 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
         break;
       case 'ArrowDown':
         e.preventDefault();
-        setActive(Math.min(activeIndex + 1, visible.length - 1));
+        setActive(Math.min(activeIndex + 1, rowCount - 1));
         break;
       case 'ArrowUp':
         e.preventDefault();
@@ -169,17 +181,17 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
         if (!showSearch) { e.preventDefault(); setActive(0); }
         break;
       case 'End':
-        if (!showSearch) { e.preventDefault(); setActive(Math.max(visible.length - 1, 0)); }
+        if (!showSearch) { e.preventDefault(); setActive(Math.max(rowCount - 1, 0)); }
         break;
       case 'Enter':
         e.preventDefault();
-        if (visible[activeIndex]) pick(visible[activeIndex]);
+        pickRow(activeIndex);
         break;
       case ' ':
         // Trong ô tìm, dấu cách là ký tự khi đã gõ chữ
         if (e.target === inputRef.current && query !== '') break;
         e.preventDefault();
-        if (visible[activeIndex]) pick(visible[activeIndex]);
+        pickRow(activeIndex);
         break;
       case 'Tab':
         close(false);
@@ -194,7 +206,8 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
   else if (selectedOptions.length > 1) label = `${selectedOptions.length} đã chọn`;
   else if (selectedKeys.size > 0) label = multi ? `${selectedKeys.size} đã chọn` : null;
   const filled = label !== null;
-  const focusId = visible[activeIndex] ? optionId(activeIndex) : undefined;
+  const focusId = rowCount > 0 ? optionId(activeIndex) : undefined;
+  const canClear = filled && allowClear && !disabled;
 
   return (
     <div ref={rootRef} className={clsx('ms', className)} onKeyDown={onKeyDown}>
@@ -207,24 +220,25 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-label={props['aria-label']}
+        style={canClear ? { paddingRight: 52 } : undefined}
         className={clsx('input ms-trigger', size === 'sm' && 'input-sm', error && 'input-error', multi && filled && 'is-filled')}
       >
         <span className={clsx('ms-value', !filled && 'is-placeholder')}>{label ?? placeholder}</span>
         <span className="ms-trigger-end">
-          {filled && allowClear && !disabled && (
-            <span
-              role="button"
-              aria-label="Bỏ chọn"
-              className="icon-btn icon-btn-sm ms-clear"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); clearAll(); }}
-            >
-              <X />
-            </span>
-          )}
           <ChevronDown className="ms-caret" />
         </span>
       </button>
+      {canClear && (
+        <button
+          type="button"
+          aria-label="Bỏ chọn"
+          className="icon-btn icon-btn-sm ms-clear"
+          style={{ position: 'absolute', right: 28, top: '50%', transform: 'translateY(-50%)' }}
+          onClick={() => { clearAll(); triggerRef.current?.focus(); }}
+        >
+          <X />
+        </button>
+      )}
 
       {open && (
         <div className="menu ms-menu animate-slide-up">
@@ -267,9 +281,23 @@ export function SearchableMultiSelect<V extends SelectValue = SelectValue>(props
             className="ms-list"
             style={{ outline: 'none' }}
           >
+            {hasClearRow && (
+              <div
+                id={optionId(0)}
+                role="option"
+                aria-selected={false}
+                className={clsx('ms-option', activeIndex === 0 && 'is-active')}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setActive(0)}
+                onClick={() => pickRow(0)}
+              >
+                <span className="ms-text"><span className="block truncate" style={{ color: 'var(--placeholder)' }}>— Bỏ chọn —</span></span>
+              </div>
+            )}
             {visible.length === 0 ? (
               <div className="ms-empty">Không tìm thấy</div>
-            ) : visible.map((option, i) => {
+            ) : visible.map((option, idx) => {
+              const i = idx + rowOffset;
               const selected = selectedKeys.has(String(option.value));
               return (
                 <div

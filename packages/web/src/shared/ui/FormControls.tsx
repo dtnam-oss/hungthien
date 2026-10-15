@@ -137,25 +137,7 @@ export function SearchBox({ value, onChange, onSubmit, placeholder = 'Tìm kiế
   );
 }
 
-/* ── FilterSelect (select nhỏ trong toolbar) ───────────────────────── */
-
-export interface FilterSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size' | 'value' | 'onChange'> {
-  icon?: ReactNode;
-  value: string;
-  onChange: (value: string) => void;
-  children: ReactNode;
-}
-
-export function FilterSelect({ icon, value, onChange, className, children, ...rest }: FilterSelectProps) {
-  return (
-    <label className={clsx('filter', value && 'is-active', className)}>
-      {icon}
-      <select value={value} onChange={(e) => onChange(e.target.value)} {...rest}>
-        {children}
-      </select>
-    </label>
-  );
-}
+/* FilterSelect đã thay bằng SearchableMultiSelect (shared/components) */
 
 /* ── DateRange (2 input ngày trong một khung) ──────────────────────── */
 

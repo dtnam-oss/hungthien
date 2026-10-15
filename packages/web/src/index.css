@@ -1010,6 +1010,9 @@ body {
 
   /* ── Dropdown tìm nhanh + chọn nhiều (.ms) ─────────────────────── */
   .ms { position: relative; min-width: 0; }
+  /* Trong toolbar bảng: bộ lọc và ô tìm co lại để nút hành động không rớt dòng ở 1280–1440px */
+  .workspace-card > .toolbar .ms { flex: 0 1 180px; min-width: 128px; }
+  .workspace-card > .toolbar .search { flex: 0 1 260px; width: auto; min-width: 150px; }
   .ms-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; padding-right: 8px; }
   .ms-trigger .ms-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .ms-trigger .ms-value.is-placeholder { color: var(--placeholder); }

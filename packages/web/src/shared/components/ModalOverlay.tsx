@@ -39,7 +39,7 @@ export function ModalOverlay({
 
   /**
    * Phím xử lý ngay trên dialog: Esc đóng (stopPropagation để drawer/panel bên dưới không nhận Esc),
-   * Tab/Shift+Tab quay vòng trong modal. Control con (SearchableSelect) có thể stopPropagation trước.
+   * Tab/Shift+Tab quay vòng trong modal. Control con (SearchableMultiSelect) có thể stopPropagation trước.
    */
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') { e.stopPropagation(); onCloseRef.current(); return; }

@@ -118,11 +118,11 @@ Một component cho mọi bảng danh sách server-side (`shared/components/Serv
 
 ## Dropdown (`SearchableMultiSelect`)
 
-`shared/components/SearchableMultiSelect.tsx`: một dropdown cho mọi nơi — `mode="multi"` cho bộ lọc, `mode="single"` cho form (`SearchableSelect` là lớp mỏng trên `mode="single"`, props giữ nguyên).
+`shared/components/SearchableMultiSelect.tsx`: một dropdown cho mọi nơi — `mode="multi"` cho bộ lọc, `mode="single"` cho form ; mọi dropdown danh sách/enum trong form, modal, panel sửa dùng `mode="single"` (`searchable="auto"`, `allowClear` khi trường tuỳ chọn). `<select>` native chỉ dành cho bộ chọn số (năm, số dòng/trang).
 
 - Props: `options[{ value, label, sublabel?, disabled? }]`, `value` (`V[]` hoặc `V | ''`), `onChange`, `placeholder`, `searchable` (`true`/`false`/`'auto'` = chỉ hiện ô tìm khi > 8 lựa chọn), `allowClear`, `size`, `error`, `maxVisible` (200, vượt thì nhắc nhập để lọc thêm), `renderOption`.
 - Giao diện: trigger dạng `.input` hiện nhãn hoặc "n đã chọn"; menu `.menu.ms-menu` có ô tìm, hàng checkbox (radio ở `single`, chọn xong đóng), "Chọn tất cả (đang lọc)" / "Bỏ chọn" ở `multi`. Lớp `.ms-*`.
-- Bàn phím: ↑↓ di chuyển, Space/Enter chọn, Esc đóng (chặn lan lên modal/drawer), Tab đóng. ARIA: `role="listbox"`, `aria-multiselectable`, `aria-activedescendant`.
+- Bàn phím: ↑↓ di chuyển, Space/Enter chọn, Esc đóng (chặn lan lên modal/drawer), Tab đóng; trên trigger Backspace/Delete xoá lựa chọn. Nút "Bỏ chọn" là `<button>` riêng cạnh trigger (tab tới được); `single` + `allowClear` có hàng "— Bỏ chọn —" đầu danh sách. ARIA: `role="listbox"`, `aria-multiselectable`, `aria-activedescendant`.
 - Bộ lọc nhiều giá trị truyền thẳng vào `filters` của `ServerDataTable` (mảng → CSV).
 
 ## Responsive

@@ -9,11 +9,9 @@ import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSe
 import type { MultiSelectOption } from '../../shared/components/SearchableMultiSelect';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
-import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
-import { SearchableSelect } from '../../shared/components/SearchableSelect';
-import type { SearchableOption } from '../../shared/components/SearchableSelect';
+import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import {
-  PageHeader, SubCard, Button, StatusPill, Alert, LoadingBlock, Field, FormGrid, Input, Select, Textarea,
+  PageHeader, SubCard, Button, StatusPill, Alert, LoadingBlock, Field, FormGrid, Input, Textarea,
 } from '../../shared/ui';
 import { formatMoney, formatDate, todayInputDate, errorMessage } from '../../shared/format';
 
@@ -52,7 +50,8 @@ interface RouteRecord extends PartyRecord { origin: string | null; destination: 
 const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Đang áp dụng', INACTIVE: 'Ngừng sử dụng' };
 const TRIP_LABELS: Record<string, string> = { STANDARD: 'Tiêu chuẩn', EXPRESS: 'Nhanh', SPECIAL: 'Đặc biệt' };
 
-const TRIP_OPTIONS = Object.entries(TRIP_LABELS);
+const TRIP_SELECT_OPTIONS = Object.entries(TRIP_LABELS).map(([value, label]) => ({ value, label }));
+const PRICE_STATUS_OPTIONS = [{ value: 'ACTIVE', label: 'Đang áp dụng' }, { value: 'INACTIVE', label: 'Ngừng sử dụng' }];
 const RAIL_STATUSES = ['ACTIVE', 'INACTIVE'];
 
 /* sortIndex = vị trí trong SORTABLE_COLUMNS của pricing-dt.service (customerName, routeName, tripType, unitPrice, validFrom, status) */
@@ -242,9 +241,7 @@ function PricingListInner({ priceType }: { priceType: 'CUSTOMER' | 'SUPPLIER' })
             {isEditing && editForm ? (
               <>
                 <EditFieldRow label="Loại chuyến">
-                  <select className={EDIT_SELECT_CLASS} value={editForm.tripType} onChange={(e) => setEditForm({ ...editForm, tripType: e.target.value })}>
-                    {TRIP_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+                  <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={TRIP_SELECT_OPTIONS} value={editForm.tripType} onChange={(v) => setEditForm({ ...editForm, tripType: String(v) })} />
                 </EditFieldRow>
                 <EditFieldRow label="Đơn giá">
                   <input className={EDIT_INPUT_CLASS} type="number" value={editForm.unitPrice} onChange={(e) => setEditForm({ ...editForm, unitPrice: e.target.value })} />
@@ -256,10 +253,7 @@ function PricingListInner({ priceType }: { priceType: 'CUSTOMER' | 'SUPPLIER' })
                   <input className={EDIT_INPUT_CLASS} type="date" value={editForm.validTo} onChange={(e) => setEditForm({ ...editForm, validTo: e.target.value })} />
                 </EditFieldRow>
                 <EditFieldRow label="Trạng thái" full>
-                  <select className={EDIT_SELECT_CLASS} value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
-                    <option value="ACTIVE">Đang áp dụng</option>
-                    <option value="INACTIVE">Ngừng sử dụng</option>
-                  </select>
+                  <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={PRICE_STATUS_OPTIONS} value={editForm.status} onChange={(v) => setEditForm({ ...editForm, status: String(v) })} />
                 </EditFieldRow>
                 <EditFieldRow label="Ghi chú" full>
                   <textarea className={EDIT_TEXTAREA_CLASS} rows={3} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
@@ -358,8 +352,8 @@ function CreatePricingForm({ title, priceType, onSuccess, onCancel }: {
   const [error, setError] = useState('');
 
   // Load options
-  const [customerOptions, setCustomerOptions] = useState<SearchableOption[]>([]);
-  const [routeOptions, setRouteOptions] = useState<SearchableOption[]>([]);
+  const [customerOptions, setCustomerOptions] = useState<MultiSelectOption[]>([]);
+  const [routeOptions, setRouteOptions] = useState<MultiSelectOption[]>([]);
 
   useEffect(() => {
     // Load customers or suppliers based on priceType
@@ -427,7 +421,8 @@ function CreatePricingForm({ title, priceType, onSuccess, onCancel }: {
 
         <FormGrid>
           <Field label={isCustomer ? 'Khách hàng' : 'Nhà cung cấp'} required full>
-            <SearchableSelect
+            <SearchableMultiSelect
+              mode="single"
               options={customerOptions}
               value={form.customerId}
               onChange={(v) => setForm({ ...form, customerId: v })}
@@ -435,7 +430,8 @@ function CreatePricingForm({ title, priceType, onSuccess, onCancel }: {
             />
           </Field>
           <Field label="Tuyến đường" required full>
-            <SearchableSelect
+            <SearchableMultiSelect
+              mode="single"
               options={routeOptions}
               value={form.routeId}
               onChange={(v) => setForm({ ...form, routeId: v })}
@@ -443,9 +439,7 @@ function CreatePricingForm({ title, priceType, onSuccess, onCancel }: {
             />
           </Field>
           <Field label="Loại chuyến">
-            <Select value={form.tripType} onChange={(e) => setForm({ ...form, tripType: e.target.value })}>
-              {TRIP_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </Select>
+            <SearchableMultiSelect mode="single" allowClear={false} options={TRIP_SELECT_OPTIONS} value={form.tripType} onChange={(v) => setForm({ ...form, tripType: String(v) })} />
           </Field>
           <Field label="Đơn giá (VNĐ)" required>
             <Input type="number" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} placeholder="VD: 5000000" />

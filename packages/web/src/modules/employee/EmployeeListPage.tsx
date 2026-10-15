@@ -4,8 +4,8 @@ import type { ServerDataColumn, ServerDataTableApi } from '../../shared/componen
 import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
-import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS } from '../../shared/components/FieldRow';
-import { Alert, Button, Checkbox, Field, FormGrid, Input, LoadingBlock, PageHeader, Pill, Select, StatusPill, SubCard } from '../../shared/ui';
+import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS } from '../../shared/components/FieldRow';
+import { Alert, Button, Checkbox, Field, FormGrid, Input, LoadingBlock, PageHeader, Pill, StatusPill, SubCard } from '../../shared/ui';
 import { errorMessage } from '../../shared/format';
 import { useAuth } from '../../shared/auth-context';
 import api from '../../shared/api';
@@ -41,6 +41,7 @@ type SetEditForm = (fn: (prev: EmployeeEditForm | null) => EmployeeEditForm | nu
 
 const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Đang làm', INACTIVE: 'Nghỉ việc', SUSPENDED: 'Tạm ngưng' };
 
+const STATUS_SELECT_OPTIONS = [{ value: 'ACTIVE', label: 'Đang làm' }, { value: 'INACTIVE', label: 'Nghỉ việc' }, { value: 'SUSPENDED', label: 'Tạm ngưng' }];
 const RAIL_STATUSES = ['ACTIVE', 'SUSPENDED', 'INACTIVE'];
 const DRIVER_OPTIONS = [{ value: 'true', label: 'Tài xế' }, { value: 'false', label: 'Không phải TX' }];
 
@@ -274,11 +275,7 @@ function EmpPanelContent({ detail, loading, isEditing, editForm, setEditForm }: 
         <div className="kv">
           {isEditing ? (
             <EditFieldRow label="Trạng thái">
-              <select value={editForm?.status || ''} onChange={(e) => setEditForm((prev) => (prev ? { ...prev, status: e.target.value } : prev))} className={EDIT_SELECT_CLASS}>
-                <option value="ACTIVE">Đang làm</option>
-                <option value="INACTIVE">Nghỉ việc</option>
-                <option value="SUSPENDED">Tạm ngưng</option>
-              </select>
+              <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={STATUS_SELECT_OPTIONS} value={editForm?.status || ''} onChange={(v) => setEditForm((prev) => (prev ? { ...prev, status: String(v) } : prev))} />
             </EditFieldRow>
           ) : (
             <FieldRow label="Trạng thái" value={<EmployeeStatus status={detail.status} />} />
@@ -354,11 +351,7 @@ function CreateEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCr
             <Input type="date" value={form.joinDate} onChange={(e) => upd('joinDate', e.target.value)} />
           </Field>
           <Field label="Trạng thái">
-            <Select value={form.status} onChange={(e) => upd('status', e.target.value)}>
-              <option value="ACTIVE">Đang làm</option>
-              <option value="INACTIVE">Nghỉ việc</option>
-              <option value="SUSPENDED">Tạm ngưng</option>
-            </Select>
+            <SearchableMultiSelect mode="single" allowClear={false} options={STATUS_SELECT_OPTIONS} value={form.status} onChange={(v) => upd('status', String(v))} />
           </Field>
           <Field className="justify-end">
             <Checkbox label="Là tài xế" checked={form.isDriver} onChange={(e) => upd('isDriver', e.target.checked)} />

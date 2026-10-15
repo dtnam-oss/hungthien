@@ -1,13 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { FormEvent } from 'react';
 import { Plus, Trash2, Check, Lock, Unlock, RefreshCw, Calculator, AlertTriangle, CalendarDays } from 'lucide-react';
 import api from '../../shared/api';
 import { useAuth } from '../../shared/auth-context';
 import { formatMoney, errorMessage } from '../../shared/format';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
 import {
-  Button, IconButton, Input, Select, Textarea, Field, FormGrid, FilterSelect,
-  PageHeader, Card, CardHeader, Toolbar, ToolbarSpacer,
+  Button, IconButton, Input, Textarea, Field, FormGrid,
+  PageHeader, Card, CardHeader,
   Pill, StatusPill, STATUS_TONES, SegmentedTabs, Alert, LoadingBlock, EmptyState, StatCard,
 } from '../../shared/ui';
 import type { StatTone } from '../../shared/ui';
@@ -85,7 +88,7 @@ export function PayrollPage() {
   }, []);
 
   return (
-    <div className="page">
+    <div className={tab === 'periods' ? 'page page-fill' : 'page'}>
       <PageHeader
         title="Bảng lương"
         description={selectedPeriod && (
@@ -114,118 +117,118 @@ export function PayrollPage() {
    Tab 1: Period Management
    ═══════════════════════════════════════════════════════════════════ */
 
+const PERIOD_RAIL_STATUSES = ['DRAFT', 'CONFIRMED', 'PAID'];
+const PERIOD_RAIL_LABELS = Object.fromEntries(PERIOD_RAIL_STATUSES.map((s) => [s, STATUS_TONES[s]?.label ?? s]));
+const TYPE_OPTIONS = Object.entries(TYPE_MAP).map(([value, label]) => ({ value, label }));
+const MODE_OPTIONS = [{ value: 'MANUAL', label: 'Nhập tay' }, { value: 'AUTO', label: 'Tự động' }];
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `Tháng ${i + 1}` }));
+const Dash = () => <span style={{ color: 'var(--faint)' }}>—</span>;
+
+// Hành động không hoàn tác được (chi tiền: server không cho mở lại) → hỏi trước
+const PERIOD_CONFIRM_TEXT: Record<string, string> = {
+  calculate: 'Tính lại bảng lương kỳ này? Số liệu đã chỉnh tay có thể bị ghi đè.',
+  confirm: 'Duyệt kỳ lương này?',
+  pay: 'Xác nhận đã chi tiền? Kỳ lương sẽ bị khóa và không thể mở lại.',
+};
+
 function PeriodTab({ onSelect, selectedId }: { onSelect: (p: Period) => void; selectedId?: number }) {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission('payroll', 'canEdit');
   const canDelete = hasPermission('payroll', 'canDelete');
-  const [periods, setPeriods] = useState<Period[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [yearFilter, setYearFilter] = useState<number[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [regionFilter, setRegionFilter] = useState<number[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const tableRef = useRef<ServerDataTableApi>(null);
+  const reload = useCallback(() => tableRef.current?.reload(), []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/payroll/periods', { params: { year: yearFilter } });
-      setPeriods(res.data.data || []);
-    } catch { setPeriods([]); }
-    setLoading(false);
-  }, [yearFilter]);
+  useEffect(() => {
+    api.get('/payroll/regions').then((r) => setRegions(r.data.data || [])).catch(() => {});
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const regionOptions = useMemo(() => regions.map((r) => ({ value: r.id, label: r.name })), [regions]);
+  const yearOptions = useMemo(() => {
+    const y = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => y + 1 - i).map((v) => ({ value: v, label: `Năm ${v}` }));
+  }, []);
+  const filters = useMemo(
+    () => ({ status: statusFilter, year: yearFilter, type: typeFilter, regionId: regionFilter }),
+    [statusFilter, yearFilter, typeFilter, regionFilter],
+  );
 
-  // Hành động không hoàn tác được (chi tiền: server không cho mở lại) → hỏi trước
-  const CONFIRM_TEXT: Record<string, string> = {
-    calculate: 'Tính lại bảng lương kỳ này? Số liệu đã chỉnh tay có thể bị ghi đè.',
-    confirm: 'Duyệt kỳ lương này?',
-    pay: 'Xác nhận đã chi tiền? Kỳ lương sẽ bị khóa và không thể mở lại.',
-  };
-
-  const action = async (id: number, path: string, method = 'post') => {
-    if (method === 'post' && CONFIRM_TEXT[path] && !confirm(CONFIRM_TEXT[path])) return;
+  const action = useCallback(async (id: number, path: string, method = 'post') => {
+    if (method === 'post' && PERIOD_CONFIRM_TEXT[path] && !confirm(PERIOD_CONFIRM_TEXT[path])) return;
     setActionLoading(id);
     try {
       if (method === 'delete') await api.delete(`/payroll/periods/${id}`);
       else await api.post(`/payroll/periods/${id}/${path}`);
-      load();
+      reload();
     } catch (err) { alert(errorMessage(err, 'Lỗi')); }
     setActionLoading(null);
-  };
+  }, [reload]);
+
+  const columns = useMemo<ServerDataColumn<Period>[]>(() => [
+    { key: 'month', label: 'Tháng', sortIndex: 1, width: 90, className: 'whitespace-nowrap', render: (p) => <span className="cell-title">{`T${p.month}`}</span> },
+    { key: 'year', label: 'Năm', sortIndex: 0, width: 90, render: (p) => p.year },
+    { key: 'type', label: 'Loại', sortIndex: 2, width: 120, render: (p) => TYPE_MAP[p.type] || p.type },
+    { key: 'region', label: 'Khu vực', hideBelow: 'md', render: (p) => p.Region?.name || <Dash /> },
+    { key: 'mode', label: 'Chế độ', hideBelow: 'lg', width: 100, render: (p) => (p.mode === 'AUTO' ? 'Tự động' : 'Nhập tay') },
+    { key: 'entries', label: 'Số NV', align: 'right', width: 80, render: (p) => p._count?.PayrollEntry ?? 0 },
+    { key: 'status', label: 'Trạng thái', sortIndex: 3, width: 120, render: (p) => <PeriodStatusPill status={p.status} /> },
+    {
+      key: 'actions', label: 'Thao tác', align: 'right', width: 200,
+      render: (p) => (
+        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          {canEdit && p.status === 'DRAFT' && p.mode === 'AUTO' && (
+            <IconButton size="sm" tone="brand" label="Tính lại" loading={actionLoading === p.id} onClick={() => action(p.id, 'calculate')}><Calculator /></IconButton>
+          )}
+          {canEdit && p.status === 'DRAFT' && (
+            <IconButton size="sm" label="Làm mới DS" disabled={actionLoading === p.id} onClick={() => action(p.id, 'refresh-roster')}><RefreshCw /></IconButton>
+          )}
+          {canEdit && p.status === 'DRAFT' && (
+            <IconButton size="sm" label="Duyệt" disabled={actionLoading === p.id} onClick={() => action(p.id, 'confirm')}><Check /></IconButton>
+          )}
+          {canEdit && p.status === 'CONFIRMED' && (
+            <>
+              <IconButton size="sm" label="Chi tiền" disabled={actionLoading === p.id} onClick={() => action(p.id, 'pay')}><Lock /></IconButton>
+              <IconButton size="sm" label="Mở lại" disabled={actionLoading === p.id} onClick={() => action(p.id, 'reopen')}><Unlock /></IconButton>
+            </>
+          )}
+          {canDelete && p.status === 'DRAFT' && (
+            <IconButton size="sm" tone="danger" label="Xoá" disabled={actionLoading === p.id} onClick={() => { if (confirm('Xoá kỳ lương?')) action(p.id, '', 'delete'); }}><Trash2 /></IconButton>
+          )}
+        </div>
+      ),
+    },
+  ], [canEdit, canDelete, actionLoading, action]);
 
   return (
     <>
-      <Card>
-        <Toolbar>
-          <FilterSelect value={String(yearFilter)} onChange={(v) => setYearFilter(Number(v))} aria-label="Năm">
-            {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map((y) => (
-              <option key={y} value={y}>Năm {y}</option>
-            ))}
-          </FilterSelect>
-          <ToolbarSpacer />
-          {canEdit && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setShowCreate(true)}>Tạo kỳ lương</Button>
-          )}
-        </Toolbar>
-
-        {loading ? (
-          <LoadingBlock />
-        ) : periods.length === 0 ? (
-          <div className="tbl-empty">Chưa có kỳ lương nào trong năm {yearFilter}</div>
-        ) : (
-          <div className="tbl-wrap">
-            <table className="tbl tbl-hover tbl-click">
-              <thead>
-                <tr>
-                  <th>Kỳ</th>
-                  <th>Loại</th>
-                  <th>Khu vực</th>
-                  <th>Chế độ</th>
-                  <th className="center">NS</th>
-                  <th className="center">Trạng thái</th>
-                  <th className="num">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {periods.map((p) => (
-                  <tr key={p.id} className={selectedId === p.id ? 'is-selected' : undefined} onClick={() => onSelect(p)}>
-                    <td className="cell-title">{`T${p.month}/${p.year}`}</td>
-                    <td>{TYPE_MAP[p.type] || p.type}</td>
-                    <td>{p.Region?.name || '—'}</td>
-                    <td>{p.mode === 'AUTO' ? 'Tự động' : 'Nhập tay'}</td>
-                    <td className="center">{p._count?.PayrollEntry || 0}</td>
-                    <td className="center"><PeriodStatusPill status={p.status} /></td>
-                    <td className="num" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        {canEdit && p.status === 'DRAFT' && p.mode === 'AUTO' && (
-                          <IconButton size="sm" tone="brand" label="Tính lại" loading={actionLoading === p.id} onClick={() => action(p.id, 'calculate')}><Calculator /></IconButton>
-                        )}
-                        {canEdit && p.status === 'DRAFT' && (
-                          <IconButton size="sm" label="Làm mới DS" disabled={actionLoading === p.id} onClick={() => action(p.id, 'refresh-roster')}><RefreshCw /></IconButton>
-                        )}
-                        {canEdit && p.status === 'DRAFT' && (
-                          <IconButton size="sm" label="Duyệt" disabled={actionLoading === p.id} onClick={() => action(p.id, 'confirm')}><Check /></IconButton>
-                        )}
-                        {canEdit && p.status === 'CONFIRMED' && (
-                          <>
-                            <IconButton size="sm" label="Chi tiền" disabled={actionLoading === p.id} onClick={() => action(p.id, 'pay')}><Lock /></IconButton>
-                            <IconButton size="sm" label="Mở lại" disabled={actionLoading === p.id} onClick={() => action(p.id, 'reopen')}><Unlock /></IconButton>
-                          </>
-                        )}
-                        {canDelete && p.status === 'DRAFT' && (
-                          <IconButton size="sm" tone="danger" label="Xoá" disabled={actionLoading === p.id} onClick={() => { if (confirm('Xoá kỳ lương?')) action(p.id, '', 'delete'); }}><Trash2 /></IconButton>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <ServerDataTable<Period>
+        endpoint="/payroll/periods/dt"
+        apiRef={tableRef}
+        columns={columns}
+        filters={filters}
+        density="dense"
+        searchPlaceholder="Tìm theo khu vực, tháng, năm..."
+        emptyTitle="Chưa có kỳ lương"
+        rail={{ statuses: PERIOD_RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter, labels: PERIOD_RAIL_LABELS }}
+        toolbar={(
+          <>
+            <SearchableMultiSelect mode="multi" size="sm" value={yearFilter} onChange={setYearFilter} options={yearOptions} placeholder="Năm" aria-label="Lọc theo năm" />
+            <SearchableMultiSelect mode="multi" size="sm" value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} placeholder="Loại" aria-label="Lọc theo loại" />
+            <SearchableMultiSelect mode="multi" size="sm" value={regionFilter} onChange={setRegionFilter} options={regionOptions} placeholder="Khu vực" searchPlaceholder="Tìm khu vực..." aria-label="Lọc theo khu vực" />
+          </>
         )}
-      </Card>
+        actions={canEdit && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setShowCreate(true)}>Tạo kỳ lương</Button>}
+        selectedKey={selectedId ?? null}
+        onRowClick={onSelect}
+      />
 
-      {showCreate && <CreatePeriodModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
+      {showCreate && <CreatePeriodModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); reload(); }} />}
     </>
   );
 }
@@ -240,6 +243,8 @@ function CreatePeriodModal({ onClose, onCreated }: { onClose: () => void; onCrea
   useEffect(() => {
     api.get('/payroll/regions').then((r) => setRegions(r.data.data || [])).catch(() => {});
   }, []);
+
+  const regionOptions = useMemo(() => regions.map((r) => ({ value: String(r.id), label: r.name })), [regions]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -266,30 +271,19 @@ function CreatePeriodModal({ onClose, onCreated }: { onClose: () => void; onCrea
       <form id="create-period-form" onSubmit={submit}>
         <FormGrid>
           <Field label="Tháng">
-            <Select value={form.month} onChange={(e) => setForm({ ...form, month: Number(e.target.value) })}>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>Tháng {m}</option>)}
-            </Select>
+            <SearchableMultiSelect mode="single" searchable="auto" allowClear={false} options={MONTH_OPTIONS} value={form.month} onChange={(v) => v !== '' && setForm({ ...form, month: v })} aria-label="Tháng" />
           </Field>
           <Field label="Năm">
             <Input type="number" value={form.year} onChange={(e) => setForm({ ...form, year: Number(e.target.value) })} />
           </Field>
           <Field label="Loại">
-            <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-              <option value="DRIVER">Tài xế</option>
-              <option value="OFFICE">Văn phòng</option>
-            </Select>
+            <SearchableMultiSelect mode="single" searchable="auto" allowClear={false} options={TYPE_OPTIONS} value={form.type} onChange={(v) => v !== '' && setForm({ ...form, type: v })} aria-label="Loại" />
           </Field>
           <Field label="Chế độ tính">
-            <Select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
-              <option value="MANUAL">Nhập tay</option>
-              <option value="AUTO">Tự động</option>
-            </Select>
+            <SearchableMultiSelect mode="single" searchable="auto" allowClear={false} options={MODE_OPTIONS} value={form.mode} onChange={(v) => v !== '' && setForm({ ...form, mode: v })} aria-label="Chế độ tính" />
           </Field>
           <Field label="Khu vực" full>
-            <Select value={form.regionId} onChange={(e) => setForm({ ...form, regionId: e.target.value })}>
-              <option value="">— Tất cả —</option>
-              {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </Select>
+            <SearchableMultiSelect mode="single" searchable="auto" options={regionOptions} value={form.regionId} onChange={(v) => setForm({ ...form, regionId: String(v) })} placeholder="— Tất cả —" aria-label="Khu vực" />
           </Field>
           <Field label="Ghi chú" full>
             <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
@@ -548,6 +542,8 @@ function DetailTab({ period }: { period: Period | null }) {
 
 /* ── Add Line Modal ──────────────────────────────────────────────── */
 
+const CATEGORY_OPTIONS = [{ value: 'INCOME', label: 'Thu nhập' }, { value: 'DEDUCTION', label: 'Khấu trừ' }];
+
 function AddLineModal({ entryId, onClose, onAdded }: { entryId: number; onClose: () => void; onAdded: () => void }) {
   const [form, setForm] = useState({ category: 'INCOME', lineType: 'BONUS', description: '', amount: '' });
   const [loading, setLoading] = useState(false);
@@ -582,18 +578,17 @@ function AddLineModal({ entryId, onClose, onAdded }: { entryId: number; onClose:
       <form id="add-line-form" onSubmit={submit}>
         <FormGrid>
           <Field label="Danh mục">
-            <Select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value, lineType: e.target.value === 'INCOME' ? 'BONUS' : 'OTHER' })}
-            >
-              <option value="INCOME">Thu nhập</option>
-              <option value="DEDUCTION">Khấu trừ</option>
-            </Select>
+            <SearchableMultiSelect
+              mode="single" searchable="auto" allowClear={false} options={CATEGORY_OPTIONS} value={form.category}
+              onChange={(v) => v !== '' && setForm({ ...form, category: v, lineType: v === 'INCOME' ? 'BONUS' : 'OTHER' })}
+              aria-label="Danh mục"
+            />
           </Field>
           <Field label="Loại khoản">
-            <Select value={form.lineType} onChange={(e) => setForm({ ...form, lineType: e.target.value })}>
-              {types.map((t) => <option key={t} value={t}>{LINE_TYPE_LABELS[t] || t}</option>)}
-            </Select>
+            <SearchableMultiSelect
+              mode="single" searchable="auto" allowClear={false} options={types.map((t) => ({ value: t, label: LINE_TYPE_LABELS[t] || t }))}
+              value={form.lineType} onChange={(v) => v !== '' && setForm({ ...form, lineType: v })} aria-label="Loại khoản"
+            />
           </Field>
           <Field label="Mô tả" full>
             <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />

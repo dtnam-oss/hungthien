@@ -1,20 +1,20 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../shared/auth-context';
 import api from '../../shared/api';
 import { errorMessage } from '../../shared/format';
-import {
-  Plus, Play, RefreshCw, ChevronLeft, ChevronRight, Info, History, CheckCircle2, AlertTriangle,
-} from 'lucide-react';
+import { Plus, Play, Info, History, CheckCircle2, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import type { DetailPanelTab } from '../../shared/components/DetailPanel';
-import { SearchableSelect } from '../../shared/components/SearchableSelect';
-import type { SearchableOption } from '../../shared/components/SearchableSelect';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
+import type { MultiSelectOption } from '../../shared/components/SearchableMultiSelect';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
 import { FieldRow, EditFieldRow, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import {
-  Button, Input, Field, FormGrid, SearchBox, FilterSelect,
-  PageHeader, Card, SubCard, Toolbar, Pill, Plate, StatusPill, Alert, LoadingBlock, Textarea,
+  Button, Input, Field, FormGrid,
+  PageHeader, SubCard, Pill, Plate, StatusPill, Alert, LoadingBlock, Textarea,
 } from '../../shared/ui';
 
 /* ── Constants ─────────────────────────────────────────────────────── */
@@ -29,7 +29,60 @@ const PANEL_TABS: DetailPanelTab[] = [
   { key: 'info', label: 'Thông tin', icon: <Info className="w-4 h-4" /> },
   { key: 'history', label: 'Lịch sử', icon: <History className="w-4 h-4" /> },
 ];
-const PAGE_SIZE = 50;
+const RAIL_STATUSES = ['ACTIVE', 'INACTIVE'];
+
+/** Dòng trả về từ /trip-plans/dt */
+interface PlanDriver { id: number; fullName: string; code: string }
+interface PlanRow {
+  id: number;
+  isActive: boolean;
+  scheduleDays: number[] | null;
+  timeSlots: string[] | null;
+  Customer: { id: number; name: string; code: string } | null;
+  Route: { id: number; name: string; code: string } | null;
+  Vehicle: { id: number; plateNumber: string } | null;
+  Employee_TripPlan_primaryDriverIdToEmployee: PlanDriver | null;
+  Employee_TripPlan_secondaryDriverIdToEmployee: PlanDriver | null;
+}
+
+const Dash = () => <span style={{ color: 'var(--faint)' }}>—</span>;
+
+/** Tải danh sách lựa chọn cho bộ lọc; lỗi không chặn trang, ô lọc chỉ rỗng */
+function useFilterOptions(url: string, toOption: (x: any) => MultiSelectOption<number>) { // eslint-disable-line @typescript-eslint/no-explicit-any -- API row shape differs per endpoint
+  const [options, setOptions] = useState<MultiSelectOption<number>[]>([]);
+  const mapRef = useRef(toOption);
+  useEffect(() => {
+    let alive = true;
+    api.get(url)
+      .then((r) => { if (alive) setOptions((r.data.data || r.data).map(mapRef.current)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [url]);
+  return options;
+}
+
+const customerOption = (x: { id: number; name: string; code?: string }) => ({ value: x.id, label: x.name, sublabel: x.code });
+const vehicleOption = (x: { id: number; plateNumber: string }) => ({ value: x.id, label: x.plateNumber });
+const driverOption = (x: { id: number; fullName: string; code?: string }) => ({ value: x.id, label: x.fullName, sublabel: x.code });
+
+function ScheduleChips({ plan }: { plan: PlanRow }) {
+  const slots = (plan.timeSlots || []).map((key) => ({ key, label: SLOT_LABELS.find((sl) => sl.key === key)?.label || key }));
+  return (
+    <div className="flex gap-1 flex-nowrap">
+      {[...(plan.scheduleDays || [])].sort((a, b) => a - b).map((d) => (
+        <Pill key={d} tone="brand" size="sm">{DAY_LABELS[d]}</Pill>
+      ))}
+      {slots.length > 0 && (
+        <Pill tone="warn" size="sm"><span title={slots.map((s) => s.label).join(', ')}>{slots.map((s) => s.label.charAt(0)).join('·')}</span></Pill>
+      )}
+    </div>
+  );
+}
+
+function driverText(plan: PlanRow) {
+  return [plan.Employee_TripPlan_primaryDriverIdToEmployee?.fullName, plan.Employee_TripPlan_secondaryDriverIdToEmployee?.fullName]
+    .filter(Boolean).join(' + ');
+}
 
 /* ── Page ──────────────────────────────────────────────────────────── */
 
@@ -39,26 +92,26 @@ export function TripPlanListPage() {
   const canDelete = hasPermission('trip', 'canDelete');
 
   /* ── State ────────────────────────────────────────────────────── */
-  const [data, setData] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [activeCount, setActiveCount] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [customerFilter, setCustomerFilter] = useState('');
-  const [customerOptions, setCustomerOptions] = useState<{ id: number; name: string }[]>([]);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [customerFilter, setCustomerFilter] = useState<number[]>([]);
+  const [vehicleFilter, setVehicleFilter] = useState<number[]>([]);
+  const [driverFilter, setDriverFilter] = useState<number[]>([]);
+  const tableRef = useRef<ServerDataTableApi>(null);
+  const reload = useCallback(() => tableRef.current?.reload(), []);
+
+  const customerOptions = useFilterOptions('/customers?pageSize=100', customerOption);
+  const vehicleOptions = useFilterOptions('/vehicles?pageSize=1000&status=ACTIVE', vehicleOption);
+  const driverOptions = useFilterOptions('/employees?pageSize=100&isDriver=true', driverOption);
 
   // Detail panel
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [detail, setDetail] = useState<any>(null);
+  const [detail, setDetail] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any -- full plan payload, edited as a loose form
   const [detailLoading, setDetailLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('info');
 
   // Editing
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState<any>({});
+  const [editForm, setEditForm] = useState<any>({}); // eslint-disable-line @typescript-eslint/no-explicit-any -- mirrors detail payload
   const [saving, setSaving] = useState(false);
 
   // Modals
@@ -74,38 +127,6 @@ export function TripPlanListPage() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  /* ── Fetch list ───────────────────────────────────────────────── */
-  const fetchList = useCallback(async (p?: number, s?: string, c?: string) => {
-    setLoading(true);
-    setError('');
-    try {
-      const params: any = { page: p ?? page, pageSize: PAGE_SIZE };
-      if (s ?? search) params.search = s ?? search;
-      if (c ?? customerFilter) params.customerId = c ?? customerFilter;
-      const res = await api.get('/trip-plans', { params });
-      setData(res.data.data);
-      setTotal(res.data.total);
-      setActiveCount(res.data.activeCount);
-    } catch (err) {
-      setError(errorMessage(err, 'Lỗi tải dữ liệu'));
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, customerFilter]);
-
-  useEffect(() => { fetchList(); }, [fetchList]);
-
-  const handleSearch = useCallback((val: string) => {
-    setSearch(val);
-    clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => { setPage(1); fetchList(1, val, customerFilter); }, 300);
-  }, [fetchList, customerFilter]);
-
-  // Lỗi tải danh sách khách hàng không chặn trang: ô lọc chỉ còn mục "Tất cả"
-  useEffect(() => {
-    api.get('/customers?pageSize=100').then((r) => setCustomerOptions(r.data.data)).catch(() => {});
-  }, []);
-
   /* ── Fetch detail ─────────────────────────────────────────────── */
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
@@ -116,11 +137,17 @@ export function TripPlanListPage() {
       .finally(() => setDetailLoading(false));
   }, [selectedId]);
 
+  const handleRowClick = useCallback((row: PlanRow) => {
+    setSelectedId(row.id);
+    setActiveTab('info');
+    setIsEditing(false);
+  }, []);
+
   /* ── Toggle active ────────────────────────────────────────────── */
   const toggleActive = useCallback(async (id: number, isActive: boolean) => {
     try {
       await api.patch(`/trip-plans/${id}/toggle`, { isActive });
-      fetchList();
+      reload();
       if (selectedId === id) {
         const res = await api.get(`/trip-plans/${id}`);
         setDetail(res.data);
@@ -128,7 +155,7 @@ export function TripPlanListPage() {
     } catch (err) {
       alert(errorMessage(err, 'Lỗi cập nhật trạng thái'));
     }
-  }, [fetchList, selectedId]);
+  }, [reload, selectedId]);
 
   /* ── Delete ───────────────────────────────────────────────────── */
   const handleDelete = useCallback(async () => {
@@ -137,11 +164,11 @@ export function TripPlanListPage() {
       await api.delete(`/trip-plans/${selectedId}`);
       setSelectedId(null);
       setIsEditing(false);
-      fetchList();
+      reload();
     } catch (err) {
       alert(errorMessage(err, 'Lỗi xóa kế hoạch'));
     }
-  }, [selectedId, fetchList]);
+  }, [selectedId, reload]);
 
   /* ── Edit ─────────────────────────────────────────────────────── */
   const handleToggleEdit = useCallback(() => {
@@ -169,15 +196,14 @@ export function TripPlanListPage() {
       const res = await api.get(`/trip-plans/${selectedId}`);
       setDetail(res.data);
       setIsEditing(false);
-      fetchList();
+      reload();
     } catch (err) {
       alert(errorMessage(err, 'Lỗi lưu'));
     }
     setSaving(false);
-  }, [selectedId, editForm, fetchList]);
+  }, [selectedId, editForm, reload]);
 
   const handleClose = useCallback(() => { setSelectedId(null); setIsEditing(false); }, []);
-  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
   const panelOpen = selectedId !== null;
 
   const renderPanel = (inline: boolean) => (
@@ -194,148 +220,97 @@ export function TripPlanListPage() {
     </DetailPanel>
   );
 
+  /* ── Columns ──────────────────────────────────────────────────── */
+  const columns = useMemo<ServerDataColumn<PlanRow>[]>(() => [
+    { key: 'customer', label: 'Khách hàng', sortIndex: 0, render: (p) => <span className="cell-title">{p.Customer?.name || <Dash />}</span> },
+    { key: 'route', label: 'Tuyến đường', sortIndex: 1, render: (p) => p.Route?.name || <Dash /> },
+    { key: 'plate', label: 'Biển số', sortIndex: 2, width: 130, className: 'whitespace-nowrap', render: (p) => (p.Vehicle?.plateNumber ? <Plate>{p.Vehicle.plateNumber}</Plate> : <Dash />) },
+    { key: 'driver', label: 'Tài xế', hideBelow: 'md', render: (p) => driverText(p) || <Dash /> },
+    { key: 'schedule', label: 'Lịch chạy', hideBelow: 'lg', className: 'whitespace-nowrap', render: (p) => <ScheduleChips plan={p} /> },
+    {
+      key: 'config', label: 'Cấu hình', align: 'center', width: 80, hideBelow: 'md',
+      render: (p) => (
+        p.Employee_TripPlan_primaryDriverIdToEmployee && p.Vehicle && (p.scheduleDays?.length ?? 0) > 0 ? (
+          <span title="Đầy đủ" style={{ color: 'var(--success-text)' }}><CheckCircle2 className="inline w-4 h-4" aria-label="Đầy đủ" /></span>
+        ) : (
+          <span title="Thiếu thông tin" style={{ color: 'var(--warn-accent)' }}><AlertTriangle className="inline w-4 h-4" aria-label="Thiếu thông tin" /></span>
+        )
+      ),
+    },
+    {
+      key: 'isActive', label: 'Trạng thái', sortIndex: 3, align: 'center', width: 120,
+      render: (p) => (
+        <span onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => toggleActive(p.id, !p.isActive)}
+            title={p.isActive ? 'Đang bật — bấm để tắt' : 'Đang tắt — bấm để bật'}
+            aria-pressed={!!p.isActive}
+          >
+            <StatusPill status={p.isActive ? 'ACTIVE' : 'INACTIVE'} size="sm" />
+          </button>
+        </span>
+      ),
+    },
+  ], [toggleActive]);
+
+  const filters = useMemo(
+    () => ({ status: statusFilter, customerId: customerFilter, vehicleId: vehicleFilter, driverId: driverFilter }),
+    [statusFilter, customerFilter, vehicleFilter, driverFilter],
+  );
+
   /* ── Render ───────────────────────────────────────────────────── */
   return (
     <div className="page page-fill">
       <PageHeader
         title="Kế hoạch chuyến đi"
         description="Lịch chạy định kỳ theo khách hàng, tuyến, xe và tài xế"
-        actions={canEdit && (
-          <>
-            <Button icon={<Play />} onClick={() => setShowGenerateModal(true)}>Tạo chuyến</Button>
-            <Button variant="primary" icon={<Plus />} onClick={() => setShowCreateModal(true)}>Thêm kế hoạch</Button>
-          </>
-        )}
       />
 
-      <div className="flex flex-1 min-h-0 gap-4">
-        {/* Table */}
-        <Card className={clsx('flex-1 min-w-0 flex-col min-h-0', panelOpen ? 'hidden lg:flex' : 'flex')}>
-          <Toolbar>
-            <SearchBox value={search} onChange={handleSearch} placeholder="Tìm tuyến, biển số, tài xế…" width={320} />
-            <FilterSelect
-              value={customerFilter}
-              onChange={(v) => { setCustomerFilter(v); setPage(1); fetchList(1, search, v); }}
-              aria-label="Khách hàng"
-            >
-              <option value="">Tất cả khách hàng</option>
-              {customerOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </FilterSelect>
-          </Toolbar>
-
-          {error && (
-            <div style={{ padding: '0 16px 12px' }}>
-              <Alert tone="error">
-                <div className="flex items-center gap-2">
-                  <span className="flex-1">{error}</span>
-                  <Button size="xs" icon={<RefreshCw />} onClick={() => fetchList()}>Thử lại</Button>
-                </div>
-              </Alert>
-            </div>
-          )}
-
-          <div className="tbl-wrap flex-1 min-h-0">
-            <table className="tbl tbl-hover tbl-click">
-              <thead>
-                <tr>
-                  <th style={{ width: 40 }}>#</th>
-                  <th>Khách hàng</th>
-                  <th>Tuyến đường</th>
-                  <th>Biển số</th>
-                  <th>Tài xế</th>
-                  <th>Lịch chạy</th>
-                  <th className="center">Cấu hình</th>
-                  <th className="center">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && data.length === 0 ? (
-                  <tr><td colSpan={8}><LoadingBlock /></td></tr>
-                ) : data.length === 0 ? (
-                  <tr><td colSpan={8} className="tbl-empty">Chưa có kế hoạch nào</td></tr>
-                ) : data.map((plan, idx) => {
-                  const driver1 = plan.Employee_TripPlan_primaryDriverIdToEmployee;
-                  const driver2 = plan.Employee_TripPlan_secondaryDriverIdToEmployee;
-                  const driverText = [driver1?.fullName, driver2?.fullName].filter(Boolean).join(' + ') || '—';
-                  const hasConfig = driver1 && plan.Vehicle && plan.scheduleDays?.length > 0;
-                  return (
-                    <tr key={plan.id}
-                      className={selectedId === plan.id ? 'is-selected' : undefined}
-                      onClick={() => { setSelectedId(plan.id); setActiveTab('info'); }}
-                    >
-                      <td style={{ color: 'var(--faint)' }}>{(page - 1) * PAGE_SIZE + idx + 1}</td>
-                      <td className="cell-title">{plan.Customer?.name || '—'}</td>
-                      <td className="truncate" style={{ maxWidth: 200 }} title={plan.Route?.name}>{plan.Route?.name || '—'}</td>
-                      <td>{plan.Vehicle?.plateNumber ? <Plate>{plan.Vehicle.plateNumber}</Plate> : '—'}</td>
-                      <td className="truncate" style={{ maxWidth: 180 }} title={driverText}>{driverText}</td>
-                      <td>
-                        <div className="flex gap-1 flex-wrap">
-                          {[...(plan.scheduleDays || [])].sort((a: number, b: number) => a - b).map((d: number) => (
-                            <Pill key={d} tone="brand" size="sm">{DAY_LABELS[d]}</Pill>
-                          ))}
-                          {(plan.timeSlots || []).map((s: string) => (
-                            <Pill key={s} tone="warn" size="sm">{SLOT_LABELS.find((sl) => sl.key === s)?.label || s}</Pill>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="center">
-                        {hasConfig ? (
-                          <span title="Đầy đủ" style={{ color: 'var(--success-text)' }}><CheckCircle2 className="inline w-4 h-4" aria-label="Đầy đủ" /></span>
-                        ) : (
-                          <span title="Thiếu thông tin" style={{ color: 'var(--warn-accent)' }}><AlertTriangle className="inline w-4 h-4" aria-label="Thiếu thông tin" /></span>
-                        )}
-                      </td>
-                      <td className="center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => toggleActive(plan.id, !plan.isActive)}
-                          title={plan.isActive ? 'Đang bật — bấm để tắt' : 'Đang tắt — bấm để bật'}
-                          aria-pressed={!!plan.isActive}
-                        >
-                          <StatusPill status={plan.isActive ? 'ACTIVE' : 'INACTIVE'} size="sm" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          <div className="foot">
-            <span>{total} kế hoạch · {activeCount} đang hoạt động</span>
-            <div className="pager">
-              <button type="button" aria-label="Trang trước" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>
-                <ChevronLeft />
-              </button>
-              <span className="self-center px-2">Trang {page} / {totalPages}</span>
-              <button type="button" aria-label="Trang sau" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}>
-                <ChevronRight />
-              </button>
-            </div>
-          </div>
-        </Card>
-
-        {/* Detail panel */}
-        {panelOpen && isLg ? (
+      <ServerDataTable<PlanRow>
+        endpoint="/trip-plans/dt"
+        apiRef={tableRef}
+        columns={columns}
+        filters={filters}
+        density="dense"
+        searchPlaceholder="Tìm tuyến, biển số, tài xế..."
+        emptyTitle="Chưa có kế hoạch nào"
+        rail={{ statuses: RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter }}
+        toolbar={(
+          <>
+            <SearchableMultiSelect mode="multi" size="sm" value={customerFilter} onChange={setCustomerFilter} options={customerOptions} placeholder="Khách hàng" searchPlaceholder="Tìm khách hàng..." aria-label="Lọc theo khách hàng" />
+            <SearchableMultiSelect mode="multi" size="sm" value={vehicleFilter} onChange={setVehicleFilter} options={vehicleOptions} placeholder="Biển số" searchPlaceholder="Tìm biển số..." aria-label="Lọc theo xe" />
+            <SearchableMultiSelect mode="multi" size="sm" value={driverFilter} onChange={setDriverFilter} options={driverOptions} placeholder="Tài xế" searchPlaceholder="Tìm tài xế..." aria-label="Lọc theo tài xế" />
+          </>
+        )}
+        actions={canEdit && (
+          <>
+            <Button size="sm" icon={<Play />} onClick={() => setShowGenerateModal(true)}>Tạo chuyến</Button>
+            <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setShowCreateModal(true)}>Thêm kế hoạch</Button>
+          </>
+        )}
+        selectedKey={selectedId}
+        onRowClick={handleRowClick}
+        aside={panelOpen && isLg ? (
           <aside className="card flex flex-col shrink-0" style={{ width: 480 }}>
             {renderPanel(true)}
           </aside>
-        ) : renderPanel(false)}
-      </div>
+        ) : undefined}
+      />
+
+      {panelOpen && !isLg && renderPanel(false)}
 
       {/* Modals */}
       {showCreateModal && (
         <CreatePlanModal
           onClose={() => setShowCreateModal(false)}
-          onCreated={() => { setShowCreateModal(false); fetchList(); }}
+          onCreated={() => { setShowCreateModal(false); reload(); }}
         />
       )}
       {showGenerateModal && (
         <GenerateTripsModal
           onClose={() => setShowGenerateModal(false)}
-          onGenerated={() => { setShowGenerateModal(false); fetchList(); }}
+          onGenerated={() => { setShowGenerateModal(false); reload(); }}
         />
       )}
     </div>
@@ -469,16 +444,16 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [saving, setSaving] = useState(false);
 
   // Select options
-  const [customers, setCustomers] = useState<SearchableOption[]>([]);
-  const [routes, setRoutes] = useState<SearchableOption[]>([]);
-  const [vehicles, setVehicles] = useState<SearchableOption[]>([]);
-  const [employees, setEmployees] = useState<SearchableOption[]>([]);
+  const [customers, setCustomers] = useState<MultiSelectOption[]>([]);
+  const [routes, setRoutes] = useState<MultiSelectOption[]>([]);
+  const [vehicles, setVehicles] = useState<MultiSelectOption[]>([]);
+  const [employees, setEmployees] = useState<MultiSelectOption[]>([]);
 
   useEffect(() => {
     Promise.all([
       api.get('/customers?pageSize=500'),
       api.get('/routes?pageSize=500'),
-      api.get('/vehicles?pageSize=500'),
+      api.get('/vehicles?pageSize=1000'),
       api.get('/employees?pageSize=100&isDriver=true'),
     ]).then(([c, r, v, e]) => {
       setCustomers((c.data.data || c.data).map((x: any) => ({ value: String(x.id), label: `${x.code} — ${x.name}` })));
@@ -547,19 +522,19 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
     >
       <FormGrid>
         <Field label="Khách hàng" required full>
-          <SearchableSelect options={customers} value={customerId} onChange={(v) => setCustomerId(String(v))} placeholder="Chọn khách hàng" />
+          <SearchableMultiSelect mode="single" searchable="auto" options={customers} value={customerId} onChange={(v) => setCustomerId(String(v))} placeholder="Chọn khách hàng" />
         </Field>
         <Field label="Tuyến đường" required full>
-          <SearchableSelect options={routes} value={routeId} onChange={(v) => setRouteId(String(v))} placeholder="Chọn tuyến" />
+          <SearchableMultiSelect mode="single" searchable="auto" options={routes} value={routeId} onChange={(v) => setRouteId(String(v))} placeholder="Chọn tuyến" />
         </Field>
         <Field label="Phương tiện" required full>
-          <SearchableSelect options={vehicles} value={vehicleId} onChange={(v) => handleVehicleChange(String(v))} placeholder="Chọn xe" />
+          <SearchableMultiSelect mode="single" searchable="auto" options={vehicles} value={vehicleId} onChange={(v) => handleVehicleChange(String(v))} placeholder="Chọn xe" />
         </Field>
         <Field label="Tài xế chính">
-          <SearchableSelect options={employees} value={primaryDriverId} onChange={(v) => setPrimaryDriverId(String(v))} placeholder="Chọn tài xế" />
+          <SearchableMultiSelect mode="single" searchable="auto" options={employees} value={primaryDriverId} onChange={(v) => setPrimaryDriverId(String(v))} placeholder="Chọn tài xế" />
         </Field>
         <Field label="Tài xế phụ">
-          <SearchableSelect options={employees} value={secondaryDriverId} onChange={(v) => setSecondaryDriverId(String(v))} placeholder="Chọn tài xế" />
+          <SearchableMultiSelect mode="single" searchable="auto" options={employees} value={secondaryDriverId} onChange={(v) => setSecondaryDriverId(String(v))} placeholder="Chọn tài xế" />
         </Field>
 
         <Field label="Ngày trong tuần" required full>

@@ -2,7 +2,8 @@
 
 import { Lock } from 'lucide-react';
 import { SubCard, STATUS_TONES } from '../../../shared/ui';
-import { EditFieldRow, FieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../../shared/components/FieldRow';
+import { SearchableMultiSelect } from '../../../shared/components/SearchableMultiSelect';
+import { EditFieldRow, FieldRow, EDIT_INPUT_CLASS, EDIT_TEXTAREA_CLASS } from '../../../shared/components/FieldRow';
 import { formatDate, formatMoney } from '../../../shared/format';
 import { TRIP_STATUSES, canTransition } from './trip-status-flow';
 import type { TripDetailData, TripEditForm } from './types';
@@ -41,11 +42,12 @@ export function TripInfoTab({ detail, isEditing, editForm, onPatch }: Props) {
             <EditFieldRow label="Ngày">{text('tripDate', 'date')}</EditFieldRow>
             <EditFieldRow label="Loại">{text('tripType', 'text', 'VD: nội thành')}</EditFieldRow>
             <EditFieldRow label="Trạng thái">
-              <select className={EDIT_SELECT_CLASS} value={editForm.status} onChange={(e) => onPatch({ status: e.target.value })}>
-                {TRIP_STATUSES.filter((s) => s === detail.status || canTransition(detail.status, s)).map((s) => (
-                  <option key={s} value={s}>{STATUS_TONES[s]?.label ?? s}</option>
-                ))}
-              </select>
+              <SearchableMultiSelect
+                mode="single" searchable="auto" size="sm" allowClear={false} aria-label="Trạng thái"
+                value={editForm.status}
+                onChange={(v) => { if (v) onPatch({ status: String(v) }); }}
+                options={TRIP_STATUSES.filter((s) => s === detail.status || canTransition(detail.status, s)).map((s) => ({ value: s, label: STATUS_TONES[s]?.label ?? s }))}
+              />
             </EditFieldRow>
             <EditFieldRow label="Doanh thu">{text('revenue', 'number', '0')}</EditFieldRow>
             <EditFieldRow label="Đơn giá">{text('unitPrice', 'number', '0')}</EditFieldRow>

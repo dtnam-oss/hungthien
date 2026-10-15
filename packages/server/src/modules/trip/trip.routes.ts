@@ -5,7 +5,7 @@ import { requirePermission, stripHiddenColumns } from '../../middleware/rbac.js'
 import { TripService } from './trip.service.js';
 import { TripsDTService } from './trips-dt.service.js';
 import type { DTParams } from './trips-dt.service.js';
-import { parseDTParams, multiParam } from '../../shared/index.js';
+import { parseDTParams, multiParam, multiIntParam } from '../../shared/index.js';
 
 const router = Router();
 const service = new TripService(prisma);
@@ -21,11 +21,11 @@ router.get('/dt', requirePermission('trip', 'canView'), async (req, res, next) =
   try {
     const params: DTParams = {
       ...parseDTParams(req.query, { defaultLength: 100, defaultDir: 'desc' }),
-      customerId: req.query.customerId ? Number(req.query.customerId) : undefined,
+      customerId: multiIntParam(req.query, 'customerId'),
       dateFrom: isoDate(req.query.dateFrom),
       dateTo: isoDate(req.query.dateTo),
-      driverId: req.query.driverId ? Number(req.query.driverId) : undefined,
-      supplierId: req.query.supplierId ? Number(req.query.supplierId) : undefined,
+      driverId: multiIntParam(req.query, 'driverId'),
+      supplierId: multiIntParam(req.query, 'supplierId'),
       status: multiParam(req.query, 'status'),
     };
     const result = await dtService.query(params);

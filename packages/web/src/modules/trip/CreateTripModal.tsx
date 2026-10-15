@@ -2,15 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { Check } from 'lucide-react';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
 import { Alert, Button, Field, FormGrid, Input, LoadingBlock, Textarea } from '../../shared/ui';
-import { SearchableSelect } from '../../shared/components/SearchableSelect';
-import type { SearchableOption } from '../../shared/components/SearchableSelect';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
+import type { MultiSelectOption } from '../../shared/components/SearchableMultiSelect';
 import api from '../../shared/api';
 
 interface SelectData {
-  customers: SearchableOption[];
-  routes: SearchableOption[];
-  vehicles: SearchableOption[];
-  drivers: SearchableOption[];
+  customers: MultiSelectOption[];
+  routes: MultiSelectOption[];
+  vehicles: MultiSelectOption[];
+  drivers: MultiSelectOption[];
 }
 
 interface CreateTripModalProps {
@@ -19,7 +19,7 @@ interface CreateTripModalProps {
   onCreated: () => void;
 }
 
-const TRIP_TYPES: SearchableOption[] = [
+const TRIP_TYPES: MultiSelectOption[] = [
   { value: 'STANDARD', label: 'Cố định' },
   { value: 'EXPRESS', label: 'Nhanh' },
   { value: 'SPECIAL', label: 'Đặc biệt' },
@@ -44,7 +44,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
   const [secondaryDriverId, setSecondaryDriverId] = useState<string | number>('');
   const [tripDate, setTripDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
-  const [filteredRoutes, setFilteredRoutes] = useState<SearchableOption[]>([]);
+  const [filteredRoutes, setFilteredRoutes] = useState<MultiSelectOption[]>([]);
 
   // Auto-generate trip code
   useEffect(() => {
@@ -228,7 +228,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
               <Input type="text" value={tripCode} onChange={(e) => setTripCode(e.target.value)} />
             </Field>
             <Field label="Loại chuyến" required>
-              <SearchableSelect
+              <SearchableMultiSelect mode="single" searchable="auto"
                 options={TRIP_TYPES}
                 value={tripType}
                 onChange={(v) => setTripType(v)}
@@ -237,7 +237,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
             </Field>
 
             <Field label="Khách hàng" required>
-              <SearchableSelect
+              <SearchableMultiSelect mode="single" searchable="auto"
                 options={selectData.customers}
                 value={customerId}
                 onChange={(v) => handleCustomerChange(v)}
@@ -265,7 +265,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
               }
               required
             >
-              <SearchableSelect
+              <SearchableMultiSelect mode="single" searchable="auto"
                 options={displayedRoutes}
                 value={routeId}
                 onChange={(v) => setRouteId(v)}
@@ -276,7 +276,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
             </Field>
 
             <Field full label="Xe" required hint="Chọn xe sẽ tự động điền tài xế nếu đã cấu hình">
-              <SearchableSelect
+              <SearchableMultiSelect mode="single" searchable="auto"
                 options={selectData.vehicles}
                 value={vehicleId}
                 onChange={(v) => handleVehicleChange(v)}
@@ -287,7 +287,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
             </Field>
 
             <Field label="Tài xế chính">
-              <SearchableSelect
+              <SearchableMultiSelect mode="single" searchable="auto"
                 options={selectData.drivers}
                 value={primaryDriverId}
                 onChange={(v) => setPrimaryDriverId(v)}
@@ -296,7 +296,7 @@ export function CreateTripModal({ isOpen, onClose, onCreated }: CreateTripModalP
               />
             </Field>
             <Field label="Tài xế phụ">
-              <SearchableSelect
+              <SearchableMultiSelect mode="single" searchable="auto"
                 options={selectData.drivers}
                 value={secondaryDriverId}
                 onChange={(v) => setSecondaryDriverId(v)}

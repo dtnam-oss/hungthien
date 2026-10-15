@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import api from '../../../shared/api';
 import { ModalOverlay } from '../../../shared/components/ModalOverlay';
-import { SearchableSelect } from '../../../shared/components/SearchableSelect';
-import type { SearchableOption } from '../../../shared/components/SearchableSelect';
+import { SearchableMultiSelect } from '../../../shared/components/SearchableMultiSelect';
+import type { MultiSelectOption } from '../../../shared/components/SearchableMultiSelect';
 import { Alert, Button, Field } from '../../../shared/ui';
 import { errorMessage } from '../../../shared/format';
 
@@ -20,7 +20,7 @@ interface Props {
 }
 
 export function AssignVehicleModal({ isOpen, count, busy, onClose, onSubmit }: Props) {
-  const [options, setOptions] = useState<SearchableOption[]>([]);
+  const [options, setOptions] = useState<MultiSelectOption[]>([]);
   const [vehicleId, setVehicleId] = useState<string | number>('');
   const [error, setError] = useState('');
 
@@ -28,7 +28,7 @@ export function AssignVehicleModal({ isOpen, count, busy, onClose, onSubmit }: P
     if (!isOpen) return;
     setVehicleId('');
     setError('');
-    // Route /vehicles không giới hạn pageSize; SearchableSelect tự lọc theo biển số
+    // Route /vehicles không giới hạn pageSize; dropdown tự lọc theo biển số
     api.get('/vehicles?pageSize=1000&status=ACTIVE')
       .then((r) => setOptions((r.data.data as VehicleOption[]).map((v) => ({
         value: v.id,
@@ -61,7 +61,7 @@ export function AssignVehicleModal({ isOpen, count, busy, onClose, onSubmit }: P
       <div className="flex flex-col gap-4">
         {error && <Alert tone="error">{error}</Alert>}
         <Field label="Xe" required hint="Chỉ liệt kê xe đang hoạt động. Nhà xe lấy theo xe được gán.">
-          <SearchableSelect options={options} value={vehicleId} onChange={(v) => setVehicleId(v)} placeholder="— Chọn biển số —" />
+          <SearchableMultiSelect mode="single" searchable="auto" options={options} value={vehicleId} onChange={(v) => setVehicleId(v)} placeholder="— Chọn biển số —" />
         </Field>
       </div>
     </ModalOverlay>

@@ -6,8 +6,7 @@ import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSe
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import type { DetailPanelTab } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
-import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
-import { SearchableSelect } from '../../shared/components/SearchableSelect';
+import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import { Alert, Button, Checkbox, Field, FormGrid, LoadingBlock, PageHeader, Pill, Plate, StatusPill, SubCard } from '../../shared/ui';
 import type { PillTone } from '../../shared/ui';
 import { formatDate, formatMoney, errorMessage } from '../../shared/format';
@@ -92,6 +91,10 @@ const STATUS_LABELS: Record<string, string> = { ACTIVE: 'Hoạt động', INACTI
 const TYPE_OPTIONS = ['REFRIGERATED', 'ENCLOSED', 'FLATBED', 'container', 'truck', 'trailer', 'tanker'];
 const TYPE_LABELS: Record<string, string> = { REFRIGERATED: 'Thùng Lạnh', ENCLOSED: 'Thùng Kín', FLATBED: 'Thùng Bạt', container: 'Container', truck: 'Tải', trailer: 'Moóc', tanker: 'Bồn' };
 const FUEL_OPTIONS = ['DIESEL', 'GASOLINE', 'ELECTRIC', 'CNG'];
+const typeSelectOptions = TYPE_OPTIONS.map((t) => ({ value: t, label: TYPE_LABELS[t] || t }));
+const FUEL_SELECT_OPTIONS = FUEL_OPTIONS.map((f) => ({ value: f, label: f }));
+const STATUS_SELECT_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
+const RESULT_OPTIONS = [{ value: 'PASS', label: 'Đạt' }, { value: 'FAIL', label: 'Không đạt' }, { value: 'CONDITIONAL', label: 'Có điều kiện' }];
 const OWNER_OPTIONS = [{ value: 'INTERNAL', label: 'Nội bộ' }, { value: 'EXTERNAL', label: 'Ngoài' }];
 
 const PANEL_TABS: DetailPanelTab[] = [
@@ -355,7 +358,7 @@ function InfoTab({ detail, isEditing, editForm, setEditForm, driverOptions }: {
     <input type={type} value={editForm[field] ?? ''} onChange={(e) => set(field, e.target.value)} placeholder={placeholder} className={EDIT_INPUT_CLASS} />
   );
   const driverSelect = (field: string) => (
-    <SearchableSelect size="sm" options={driverOptions} value={String(editForm[field] ?? '')} onChange={(v) => set(field, String(v))} placeholder="— Không —" />
+    <SearchableMultiSelect mode="single" size="sm" options={driverOptions} value={String(editForm[field] ?? '')} onChange={(v) => set(field, String(v))} placeholder="— Không —" />
   );
 
   return (
@@ -365,10 +368,7 @@ function InfoTab({ detail, isEditing, editForm, setEditForm, driverOptions }: {
           <FieldRow label="Biển số" value={<Plate>{detail.plateNumber}</Plate>} />
           {isEditing ? (
             <EditFieldRow label="Loại xe">
-              <select value={editForm.type || ''} onChange={(e) => set('type', e.target.value)} className={EDIT_SELECT_CLASS}>
-                <option value="">Chọn loại</option>
-                {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{TYPE_LABELS[t] || t}</option>)}
-              </select>
+              <SearchableMultiSelect mode="single" size="sm" options={typeSelectOptions} value={editForm.type || ''} onChange={(v) => set('type', String(v))} placeholder="Chọn loại" />
             </EditFieldRow>
           ) : <FieldRow label="Loại xe" value={TYPE_LABELS[detail.type || ''] || detail.type} />}
           {isEditing ? <EditFieldRow label="Hãng">{inp('brand', 'text', 'Hyundai')}</EditFieldRow> : <FieldRow label="Hãng" value={detail.brand} />}
@@ -378,9 +378,7 @@ function InfoTab({ detail, isEditing, editForm, setEditForm, driverOptions }: {
           {isEditing ? <EditFieldRow label="Thể tích (m³)">{inp('cubicMeters', 'number')}</EditFieldRow> : <FieldRow label="Thể tích" value={detail.cubicMeters ? `${detail.cubicMeters} m³` : null} />}
           {isEditing ? (
             <EditFieldRow label="Nhiên liệu">
-              <select value={editForm.fuelType || ''} onChange={(e) => set('fuelType', e.target.value)} className={EDIT_SELECT_CLASS}>
-                {FUEL_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
+              <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={FUEL_SELECT_OPTIONS} value={editForm.fuelType || ''} onChange={(v) => set('fuelType', String(v))} />
             </EditFieldRow>
           ) : <FieldRow label="Nhiên liệu" value={detail.fuelType} />}
         </div>
@@ -390,16 +388,12 @@ function InfoTab({ detail, isEditing, editForm, setEditForm, driverOptions }: {
         <div className="kv">
           {isEditing ? (
             <EditFieldRow label="Sở hữu">
-              <select value={editForm.ownerType || ''} onChange={(e) => set('ownerType', e.target.value)} className={EDIT_SELECT_CLASS}>
-                {OWNER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={OWNER_OPTIONS} value={editForm.ownerType || ''} onChange={(v) => set('ownerType', String(v))} />
             </EditFieldRow>
           ) : <FieldRow label="Sở hữu" value={<OwnerPill ownerType={detail.ownerType} />} />}
           {isEditing ? (
             <EditFieldRow label="Trạng thái">
-              <select value={editForm.status || ''} onChange={(e) => set('status', e.target.value)} className={EDIT_SELECT_CLASS}>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
+              <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={STATUS_SELECT_OPTIONS} value={editForm.status || ''} onChange={(v) => set('status', String(v))} />
             </EditFieldRow>
           ) : <FieldRow label="Trạng thái" value={<VehicleStatusPill status={detail.status} />} />}
           {detail.Supplier && <FieldRow label="Nhà cung cấp" value={detail.Supplier.name} />}
@@ -576,9 +570,7 @@ function InspectionsTab({ detail, loadDetail }: { detail: VehicleDetail; loadDet
               <Field label="Ngày KĐ" required><input type="date" value={form.inspectionDate} onChange={(e) => upd('inspectionDate', e.target.value)} className={EDIT_INPUT_CLASS} /></Field>
               <Field label="Hạn" required><input type="date" value={form.expiryDate} onChange={(e) => upd('expiryDate', e.target.value)} className={EDIT_INPUT_CLASS} /></Field>
               <Field label="Kết quả">
-                <select value={form.result} onChange={(e) => upd('result', e.target.value)} className={EDIT_SELECT_CLASS}>
-                  <option value="PASS">Đạt</option><option value="FAIL">Không đạt</option><option value="CONDITIONAL">Có điều kiện</option>
-                </select>
+                <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={RESULT_OPTIONS} value={form.result} onChange={(v) => upd('result', String(v))} />
               </Field>
               <Field label="Trung tâm"><input type="text" value={form.inspectionCenter} onChange={(e) => upd('inspectionCenter', e.target.value)} className={EDIT_INPUT_CLASS} /></Field>
               <Field label="Số GCN"><input type="text" value={form.certificateNumber} onChange={(e) => upd('certificateNumber', e.target.value)} className={EDIT_INPUT_CLASS} /></Field>
@@ -671,10 +663,7 @@ function CreateVehicleModal({ onClose, onCreated, driverOptions }: {
             <input type="text" value={form.plateNumber} onChange={(e) => upd('plateNumber', e.target.value)} className="input" placeholder="51C-12345" />
           </Field>
           <Field label="Loại xe">
-            <select value={form.type} onChange={(e) => upd('type', e.target.value)} className="select">
-              <option value="">Chọn loại</option>
-              {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{TYPE_LABELS[t] || t}</option>)}
-            </select>
+            <SearchableMultiSelect mode="single" options={typeSelectOptions} value={form.type} onChange={(v) => upd('type', String(v))} placeholder="Chọn loại" />
           </Field>
           <Field label="Hãng xe">
             <input type="text" value={form.brand} onChange={(e) => upd('brand', e.target.value)} className="input" placeholder="Hyundai" />
@@ -686,15 +675,13 @@ function CreateVehicleModal({ onClose, onCreated, driverOptions }: {
             <input type="number" value={form.tonnage} onChange={(e) => upd('tonnage', e.target.value)} className="input" />
           </Field>
           <Field label="Sở hữu">
-            <select value={form.ownerType} onChange={(e) => upd('ownerType', e.target.value)} className="select">
-              {OWNER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <SearchableMultiSelect mode="single" allowClear={false} options={OWNER_OPTIONS} value={form.ownerType} onChange={(v) => upd('ownerType', String(v))} />
           </Field>
           <Field label="TX chính">
-            <SearchableSelect options={driverOptions} value={form.primaryDriverId} onChange={(v) => upd('primaryDriverId', String(v))} placeholder="Chọn tài xế" />
+            <SearchableMultiSelect mode="single" options={driverOptions} value={form.primaryDriverId} onChange={(v) => upd('primaryDriverId', String(v))} placeholder="Chọn tài xế" />
           </Field>
           <Field label="TX phụ">
-            <SearchableSelect options={driverOptions} value={form.secondaryDriverId} onChange={(v) => upd('secondaryDriverId', String(v))} placeholder="Chọn tài xế" />
+            <SearchableMultiSelect mode="single" options={driverOptions} value={form.secondaryDriverId} onChange={(v) => upd('secondaryDriverId', String(v))} placeholder="Chọn tài xế" />
           </Field>
         </FormGrid>
       </div>

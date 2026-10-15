@@ -3,9 +3,10 @@ import type { FormEvent } from 'react';
 import { useAuth } from '../../shared/auth-context';
 import { ServerDataTable } from '../../shared/components/ServerDataTable';
 import type { ServerDataColumn, ServerDataTableApi } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
 import { DetailPanel } from '../../shared/components/DetailPanel';
 import { ModalOverlay } from '../../shared/components/ModalOverlay';
-import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_SELECT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
+import { FieldRow, EditFieldRow, EDIT_INPUT_CLASS, EDIT_TEXTAREA_CLASS } from '../../shared/components/FieldRow';
 import {
   Alert, Button, Field, FormGrid, Input, LoadingBlock, PageHeader, StatusPill, SubCard,
 } from '../../shared/ui';
@@ -65,6 +66,7 @@ const COLUMNS: ServerDataColumn<Customer>[] = [
 
 const RAIL_STATUSES = ['ACTIVE', 'INACTIVE'];
 
+const STATUS_SELECT_OPTIONS = [{ value: 'ACTIVE', label: 'Hoạt động' }, { value: 'INACTIVE', label: 'Ngừng HĐ' }];
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Hoạt động',
   INACTIVE: 'Ngừng HĐ',
@@ -351,10 +353,7 @@ function PanelContent({ detail, loading, isEditing, editForm, setEditForm }: {
               <EditFieldRow label="Địa chỉ" full>{text('address')}</EditFieldRow>
               <EditFieldRow label="Người liên hệ">{text('contactPerson')}</EditFieldRow>
               <EditFieldRow label="Trạng thái">
-                <select className={EDIT_SELECT_CLASS} value={editForm?.status ?? ''} onChange={(e) => set({ status: e.target.value })}>
-                  <option value="ACTIVE">Hoạt động</option>
-                  <option value="INACTIVE">Ngừng HĐ</option>
-                </select>
+                <SearchableMultiSelect mode="single" size="sm" allowClear={false} options={STATUS_SELECT_OPTIONS} value={editForm?.status ?? ''} onChange={(v) => set({ status: String(v) })} />
               </EditFieldRow>
               <EditFieldRow label="Ghi chú" full>
                 <textarea className={EDIT_TEXTAREA_CLASS} rows={3} value={editForm?.notes ?? ''} onChange={(e) => set({ notes: e.target.value })} />

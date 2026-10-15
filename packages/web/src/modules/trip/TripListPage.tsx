@@ -2,19 +2,20 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, Download, Calendar } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../shared/auth-context';
-import { useServerTable } from '../../shared/hooks/useServerTable';
-import type { ServerTableColumn } from '../../shared/hooks/useServerTable';
 import api from '../../shared/api';
 import { errorMessage } from '../../shared/format';
-import { Alert, Button, Card, DateRange, PageHeader, Pagination, SearchBox, STATUS_TONES, Toolbar, ToolbarSpacer } from '../../shared/ui';
+import { ServerDataTable } from '../../shared/components/ServerDataTable';
+import type { RenderBodyContext, RowId, ServerDataTableApi } from '../../shared/components/ServerDataTable';
+import { SearchableMultiSelect } from '../../shared/components/SearchableMultiSelect';
+import type { MultiSelectOption } from '../../shared/components/SearchableMultiSelect';
+import { Alert, Button, DateRange, PageHeader, STATUS_TONES } from '../../shared/ui';
 import { CreateTripModal } from './CreateTripModal';
-import { TripFilterRail } from './components/TripFilterRail';
-import type { RailOption } from './components/TripFilterRail';
 import { AttentionBanner } from './components/AttentionBanner';
 import { BulkActionBar } from './components/BulkActionBar';
 import { AssignVehicleModal } from './components/AssignVehicleModal';
 import { TripDetailDrawer } from './components/TripDetailDrawer';
-import { TripTable } from './components/TripTable';
+import { TripBody } from './components/TripTable';
+import { TRIP_COLUMNS } from './components/trip-columns';
 import type { TripViewMode } from './components/TripTable';
 import { useTripDetail } from './components/useTripDetail';
 import { downloadTripsCsv } from './components/export-csv';
@@ -22,16 +23,9 @@ import { BULK_LIMIT, TRIP_STATUSES, canTransition } from './components/trip-stat
 import type { TripStatus } from './components/trip-status-flow';
 import type { TripRow } from './components/types';
 
-/* Thứ tự cột PHẢI khớp SORTABLE_COLUMNS ở backend */
-const SERVER_COLUMNS: ServerTableColumn[] = [
-  { sortable: false }, // #
-  { sortable: true },  // route
-  { sortable: true },  // customer
-  { sortable: true },  // plate
-  { sortable: false }, // costCount
-  { sortable: true },  // status
-  { sortable: true },  // supplier
-];
+const RAIL_STATUSES = ['PLANNED', 'DISPATCHED', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED'];
+const RAIL_LABELS: Record<string, string> = Object.fromEntries(RAIL_STATUSES.map((s) => [s, STATUS_TONES[s]?.label ?? s]));
+const VIEW_MODES = [['grouped', 'Theo ngày'], ['flat', 'Danh sách']] as const;
 
 /** Chuyến sắp chạy nhưng thiếu xe, tài xế hoặc nhà xe */
 const needsAttention = (t: TripRow) =>
@@ -40,87 +34,82 @@ const needsAttention = (t: TripRow) =>
 
 interface BulkResult { tone: 'success' | 'warn' | 'error'; message: string }
 
+interface NamedRow { id: number; code?: string; name?: string; fullName?: string }
+const toOptions = (rows: NamedRow[]): MultiSelectOption<number>[] =>
+  rows.map((r) => ({ value: r.id, label: r.fullName || r.name || String(r.id), sublabel: r.code }));
+
 export function TripListPage() {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission('trip', 'canEdit');
   const canDelete = hasPermission('trip', 'canDelete');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const tableRef = useRef<ServerDataTableApi>(null);
+  const reload = useCallback(() => tableRef.current?.reload(), []);
 
   /* ── Filters ──────────────────────────────────────────────────── */
-  const [statusFilter, setStatusFilter] = useState('');
-  const [customerFilter, setCustomerFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [customerFilter, setCustomerFilter] = useState<number[]>([]);
+  const [driverFilter, setDriverFilter] = useState<number[]>([]);
+  const [supplierFilter, setSupplierFilter] = useState<number[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [driverFilter, setDriverFilter] = useState('');
-  const [supplierFilter, setSupplierFilter] = useState('');
-  const [searchInput, setSearchInput] = useState('');
 
-  const [customers, setCustomers] = useState<RailOption[]>([]);
-  const [drivers, setDrivers] = useState<RailOption[]>([]);
-  const [suppliers, setSuppliers] = useState<RailOption[]>([]);
+  const [customerOptions, setCustomerOptions] = useState<MultiSelectOption<number>[]>([]);
+  const [driverOptions, setDriverOptions] = useState<MultiSelectOption<number>[]>([]);
+  const [supplierOptions, setSupplierOptions] = useState<MultiSelectOption<number>[]>([]);
 
   useEffect(() => {
-    // Lỗi tải danh sách lọc không chặn trang: ô chọn chỉ còn mục "tất cả"
-    api.get('/customers?pageSize=200').then((r) => setCustomers(r.data.data)).catch(() => {});
-    api.get('/employees?pageSize=100&isDriver=true').then((r) => setDrivers(r.data.data)).catch(() => {});
-    api.get('/suppliers?pageSize=200').then((r) => setSuppliers(r.data.data)).catch(() => {});
+    // Lỗi tải danh sách lọc không chặn trang: ô chọn chỉ còn danh sách rỗng
+    api.get('/customers?pageSize=200').then((r) => setCustomerOptions(toOptions(r.data.data))).catch(() => {});
+    api.get('/employees?pageSize=100&isDriver=true').then((r) => setDriverOptions(toOptions(r.data.data))).catch(() => {});
+    api.get('/suppliers?pageSize=200').then((r) => setSupplierOptions(toOptions(r.data.data))).catch(() => {});
   }, []);
 
-  /* ── Server table ─────────────────────────────────────────────── */
-  const filters: Record<string, string | number | undefined> = {};
-  if (statusFilter) filters.status = statusFilter;
-  if (customerFilter) filters.customerId = Number(customerFilter);
-  if (dateFrom) filters.dateFrom = dateFrom;
-  if (dateTo) filters.dateTo = dateTo;
-  if (driverFilter) filters.driverId = Number(driverFilter);
-  if (supplierFilter) filters.supplierId = Number(supplierFilter);
-
-  const table = useServerTable<TripRow>({
-    endpoint: '/trips/dt',
-    filters,
-    columns: SERVER_COLUMNS,
-    defaultLength: 100,
-  });
-
-  useEffect(() => {
-    if (searchInput === table.search) return; // tránh gọi /dt lần 2 khi mới mở trang
-    table.setSearch(searchInput);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput]);
+  const filters = useMemo(() => ({
+    status: statusFilter,
+    customerId: customerFilter,
+    driverId: driverFilter,
+    supplierId: supplierFilter,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  }), [statusFilter, customerFilter, driverFilter, supplierFilter, dateFrom, dateTo]);
 
   /* ── Drawer ───────────────────────────────────────────────────── */
-  const detailCtl = useTripDetail(table.reload);
+  const detailCtl = useTripDetail(reload);
+  const openDetail = detailCtl.open;
+  const handleRowClick = useCallback((row: TripRow) => openDetail(row.id), [openDetail]);
 
-  /* ── Attention filter / view mode / selection ─────────────────── */
+  /* ── Attention filter / view mode / grouping / selection ──────── */
   const [attnFilter, setAttnFilter] = useState(false);
   const [viewMode, setViewMode] = useState<TripViewMode>('grouped');
-  const [checked, setChecked] = useState<Set<number>>(new Set());
-
-  const attnCount = useMemo(() => table.data.filter(needsAttention).length, [table.data]);
-  const visibleRows = useMemo(
-    () => (attnFilter ? table.data.filter(needsAttention) : table.data),
-    [table.data, attnFilter],
-  );
-
-  // Tập chọn chỉ có nghĩa với các dòng đang hiển thị: đổi trang / bộ lọc / tải lại → bỏ chọn,
-  // trừ khi một thao tác hàng loạt yêu cầu giữ lại các chuyến lỗi (keepSelectionRef)
-  const keepSelectionRef = useRef<Set<number> | null>(null);
-  useEffect(() => {
-    setChecked(keepSelectionRef.current ?? new Set());
-    keepSelectionRef.current = null;
-  }, [table.data]);
-  const selectedRows = useMemo(() => visibleRows.filter((r) => checked.has(r.id)), [visibleRows, checked]);
-
-  const toggleCheck = useCallback((id: number) => {
-    setChecked((prev) => {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   }, []);
-  const toggleCheckAll = useCallback(() => {
-    setChecked(selectedRows.length === visibleRows.length ? new Set() : new Set(visibleRows.map((r) => r.id)));
-  }, [selectedRows.length, visibleRows]);
+
+  /** Dòng của trang hiện tại, do thân bảng báo lên (ServerDataTable không lộ dữ liệu) */
+  const [pageRows, setPageRows] = useState<TripRow[]>([]);
+  const [selected, setSelected] = useState<RowId[]>([]);
+
+  const attnCount = useMemo(() => pageRows.filter(needsAttention).length, [pageRows]);
+  const rowFilter = attnFilter ? needsAttention : undefined;
+  const visibleRows = useMemo(() => (attnFilter ? pageRows.filter(needsAttention) : pageRows), [pageRows, attnFilter]);
+
+  // Tập chọn chỉ có nghĩa với các dòng đang hiển thị: đổi trang / bộ lọc / tải lại → bỏ chọn,
+  // trừ khi một thao tác hàng loạt yêu cầu giữ lại các chuyến lỗi (keepSelectionRef)
+  const keepSelectionRef = useRef<RowId[] | null>(null);
+  useEffect(() => {
+    setSelected(keepSelectionRef.current ?? []);
+    keepSelectionRef.current = null;
+  }, [pageRows]);
+  const selectedRows = useMemo(() => {
+    const set = new Set(selected);
+    return visibleRows.filter((r) => set.has(r.id));
+  }, [visibleRows, selected]);
 
   /* ── Bulk actions: gọi tuần tự từng chuyến, gom kết quả ───────── */
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -145,9 +134,9 @@ export function TripListPage() {
     setBulkBusy(true);
     setBulkResult(null);
     const failures: string[] = [];
-    const failedIds = new Set<number>();
+    const failedIds: number[] = [];
     for (const row of rows) {
-      try { await action(row); } catch (err) { failures.push(`${row.tripCode}: ${errorMessage(err)}`); failedIds.add(row.id); }
+      try { await action(row); } catch (err) { failures.push(`${row.tripCode}: ${errorMessage(err)}`); failedIds.push(row.id); }
     }
     const ok = rows.length - failures.length;
     const parts = [`${label}: ${ok} chuyến thành công`];
@@ -155,9 +144,9 @@ export function TripListPage() {
     if (failures.length) parts.push(`${failures.length} lỗi — ${failures.join('; ')}`);
     setBulkResult({ tone: failures.length ? 'error' : skipped.length ? 'warn' : 'success', message: parts.join(' · ') + '.' });
     setBulkBusy(false);
-    keepSelectionRef.current = failedIds.size ? failedIds : null;
-    table.reload();
-  }, [table]);
+    keepSelectionRef.current = failedIds.length ? failedIds : null;
+    reload();
+  }, [reload]);
 
   const bulkChangeStatus = useCallback((next: TripStatus) => {
     const label = `Đổi trạng thái → ${STATUS_TONES[next]?.label ?? next}`;
@@ -181,90 +170,76 @@ export function TripListPage() {
     downloadTripsCsv(rows);
   }, []);
 
-  const rangeLabel = table.recordsFiltered > 0
-    ? `Hiển thị ${table.start + 1}–${Math.min(table.start + table.length, table.recordsFiltered)} / ${table.recordsFiltered.toLocaleString('vi-VN')} kết quả`
-    : '0 kết quả';
+  const renderBody = useCallback((ctx: RenderBodyContext<TripRow>) => (
+    <TripBody
+      ctx={ctx}
+      viewMode={viewMode}
+      rowFilter={rowFilter}
+      selectedId={detailCtl.selectedId}
+      collapsed={collapsed}
+      onToggleGroup={toggleGroup}
+      onRows={setPageRows}
+    />
+  ), [viewMode, rowFilter, detailCtl.selectedId, collapsed, toggleGroup]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="page pb-24">
-          <PageHeader
-            title="Chuyến đi"
-            description="Theo dõi, điều phối và cập nhật trạng thái các chuyến vận chuyển."
-            actions={
-              <>
-                <Button icon={<Download />} onClick={() => exportCsv(visibleRows)} title="Xuất các chuyến đang hiển thị ra CSV">Xuất CSV</Button>
-                {canEdit && <Button variant="primary" icon={<Plus />} onClick={() => setShowCreateModal(true)}>Tạo chuyến</Button>}
-              </>
-            }
-          />
+      <div className="page page-fill">
+        <PageHeader
+          title="Chuyến đi"
+          description="Theo dõi, điều phối và cập nhật trạng thái các chuyến vận chuyển."
+        />
 
-          <AttentionBanner count={attnCount} filtering={attnFilter} onToggle={() => setAttnFilter((p) => !p)} />
+        <AttentionBanner count={attnCount} filtering={attnFilter} onToggle={() => setAttnFilter((p) => !p)} />
 
-          {bulkResult && (
-            <Alert tone={bulkResult.tone}>
-              <div className="flex items-start gap-3">
-                <span className="flex-1">{bulkResult.message}</span>
-                <button type="button" className="link" onClick={() => setBulkResult(null)}>Đóng</button>
+        {bulkResult && (
+          <Alert tone={bulkResult.tone}>
+            <div className="flex items-start gap-3">
+              <span className="flex-1">{bulkResult.message}</span>
+              <button type="button" className="link" onClick={() => setBulkResult(null)}>Đóng</button>
+            </div>
+          </Alert>
+        )}
+
+        <ServerDataTable<TripRow>
+          endpoint="/trips/dt"
+          apiRef={tableRef}
+          columns={TRIP_COLUMNS}
+          filters={filters}
+          density="comfortable"
+          defaultLength={100}
+          searchPlaceholder="Mã chuyến, khách hàng, tuyến, biển số..."
+          emptyTitle="Không có chuyến phù hợp"
+          rail={{ statuses: RAIL_STATUSES, value: statusFilter, onChange: setStatusFilter, labels: RAIL_LABELS }}
+          toolbar={
+            <>
+              <SearchableMultiSelect mode="multi" size="sm" value={customerFilter} onChange={setCustomerFilter} options={customerOptions} placeholder="Khách hàng" searchPlaceholder="Tìm khách hàng..." aria-label="Lọc theo khách hàng" />
+              <SearchableMultiSelect mode="multi" size="sm" value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Nhà xe" searchPlaceholder="Tìm nhà xe..." aria-label="Lọc theo nhà xe" />
+              <SearchableMultiSelect mode="multi" size="sm" value={driverFilter} onChange={setDriverFilter} options={driverOptions} placeholder="Tài xế" searchPlaceholder="Tìm tài xế..." aria-label="Lọc theo tài xế" />
+              <DateRange from={dateFrom} to={dateTo} icon={<Calendar />} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
+              <div className="seg seg-sm" role="group" aria-label="Chế độ hiển thị">
+                {VIEW_MODES.map(([mode, label]) => (
+                  <button key={mode} type="button" aria-pressed={viewMode === mode}
+                    className={clsx('seg-tab', viewMode === mode && 'is-active')} onClick={() => setViewMode(mode)}>
+                    {label}
+                  </button>
+                ))}
               </div>
-            </Alert>
-          )}
-
-          {/* Workspace: rail lọc trái · bảng giữa · drawer phải (overlay) */}
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-            <TripFilterRail
-              stats={table.statusStats}
-              total={table.recordsFiltered}
-              status={statusFilter}
-              onStatusChange={setStatusFilter}
-              customers={customers}
-              drivers={drivers}
-              suppliers={suppliers}
-              customer={customerFilter}
-              driver={driverFilter}
-              supplier={supplierFilter}
-              onCustomerChange={setCustomerFilter}
-              onDriverChange={setDriverFilter}
-              onSupplierChange={setSupplierFilter}
-            />
-
-            <Card className="min-w-0 flex-1 overflow-hidden">
-              <Toolbar>
-                <span className="card-title" style={{ flexGrow: 0 }}>Danh sách chuyến đi</span>
-                <ToolbarSpacer />
-                <SearchBox value={searchInput} onChange={setSearchInput} width={280} placeholder="Mã chuyến, khách hàng, tuyến, biển số..." />
-                <DateRange from={dateFrom} to={dateTo} icon={<Calendar />} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
-                <div className="seg seg-sm" role="group" aria-label="Chế độ hiển thị">
-                  {([['grouped', 'Theo ngày'], ['flat', 'Danh sách']] as const).map(([mode, label]) => (
-                    <button key={mode} type="button" aria-pressed={viewMode === mode}
-                      className={clsx('seg-tab', viewMode === mode && 'is-active')} onClick={() => setViewMode(mode)}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </Toolbar>
-
-              <TripTable
-                rows={visibleRows}
-                loading={table.loading}
-                error={table.error}
-                viewMode={viewMode}
-                selectedId={detailCtl.selectedId}
-                checked={checked}
-                startIndex={table.start + 1}
-                onOpen={detailCtl.open}
-                onToggleCheck={toggleCheck}
-                onToggleCheckAll={toggleCheckAll}
-              />
-
-              <div className="foot">
-                <span className="tabular-nums">{rangeLabel}</span>
-                <Pagination page={table.currentPage} totalPages={table.totalPages} onChange={table.setPage} />
-              </div>
-            </Card>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <>
+              <Button size="sm" icon={<Download />} onClick={() => exportCsv(visibleRows)} title="Xuất các chuyến đang hiển thị ra CSV">Xuất CSV</Button>
+              {canEdit && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setShowCreateModal(true)}>Tạo chuyến</Button>}
+            </>
+          }
+          selectable
+          selected={selected}
+          onSelectedChange={setSelected}
+          selectedKey={detailCtl.selectedId}
+          onRowClick={handleRowClick}
+          renderBody={renderBody}
+        />
       </div>
 
       {detailCtl.selectedId !== null && <TripDetailDrawer key={detailCtl.selectedId} ctl={detailCtl} canEdit={canEdit} canDelete={canDelete} />}
@@ -274,7 +249,7 @@ export function TripListPage() {
           count={selectedRows.length}
           busy={bulkBusy}
           statusTargets={statusTargets}
-          onClear={() => setChecked(new Set())}
+          onClear={() => setSelected([])}
           onAssignVehicle={() => setAssignOpen(true)}
           onChangeStatus={bulkChangeStatus}
           onExport={() => exportCsv(selectedRows)}
@@ -283,7 +258,7 @@ export function TripListPage() {
 
       <AssignVehicleModal isOpen={assignOpen} count={selectedRows.length} busy={bulkBusy} onClose={() => setAssignOpen(false)} onSubmit={bulkAssignVehicle} />
 
-      <CreateTripModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={table.reload} />
+      <CreateTripModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={reload} />
     </div>
   );
 }
