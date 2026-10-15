@@ -7,14 +7,15 @@
  * unexpectedly and who did it.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('audit');
 
 export interface AuditEntry {
-  userId: number | null;
-  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  /** Lấy từ req.user?.userId nên có thể undefined; ghi null khi không xác định */
+  userId?: number | null;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'UPSERT';
   tableName: string;
   recordId: number;
   oldValues?: Record<string, unknown> | null;
@@ -30,12 +31,12 @@ export async function writeAuditLog(prisma: PrismaClient, entry: AuditEntry): Pr
   try {
     await prisma.auditLog.create({
       data: {
-        userId: entry.userId,
+        userId: entry.userId ?? null,
         action: entry.action,
         tableName: entry.tableName,
         recordId: entry.recordId,
-        oldValues: entry.oldValues ?? undefined,
-        newValues: entry.newValues ?? undefined,
+        oldValues: (entry.oldValues ?? undefined) as Prisma.InputJsonValue | undefined,
+        newValues: (entry.newValues ?? undefined) as Prisma.InputJsonValue | undefined,
         ipAddress: entry.ipAddress,
       },
     });

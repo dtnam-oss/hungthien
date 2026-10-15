@@ -35,7 +35,7 @@ Chưa sửa (ticket):
 | 19 | P3 | `span role=button` trong nút xóa chọn của SearchableSelect; `th` sortable của DataTable chưa bàn phím; hàng Kế hoạch/Bảng lương chưa `tabIndex` |
 | 20 | P3 | Modal Tạo chuyến/Kế hoạch gọi `pageSize=500` (server clamp 100) cho KH/tuyến/xe |
 | — | — | 27 warning oxlint (`set-state-in-effect` 23, …) — người dùng chọn để ticket riêng |
-| — | backend | 32 lỗi `tsc` server có sẵn: 28 × `userId: number \| undefined` vào `writeAuditLog({userId: number \| null})`, 1 × action `'UPSERT'` ngoài union, 1 × `Date` ép `string` (pricing.service:139), 2 × JSON `undefined` (audit.ts:37-38). Sửa tập trung ở `shared/audit.ts` (nhận `number \| undefined`, `?? null`, thêm `UPSERT`) |
+| — | backend | ~~32 lỗi `tsc` server~~ **Đã sửa (sau phase 5, theo yêu cầu người dùng)**: nguyên nhân gốc ở `shared/audit.ts` — `AuditEntry.userId: number \| null` trong khi mọi caller truyền `req.user?.userId` (`number \| undefined`). Sửa tại nguồn: `userId?: number \| null` + `?? null`, thêm `'UPSERT'` (cột `action` là varchar), ép Json qua `Prisma.InputJsonValue`; `pricing.service.ts:139` ép `string \| Date`. `tsc` 0, `npm run build` exit 0, vitest 41/41, server tsx reload OK. |
 | — | backend | `PATCH /trips/:id/status` thiếu `requirePermission` + transition; chưa có GET nhật ký |
 
 ## Kiểm tra

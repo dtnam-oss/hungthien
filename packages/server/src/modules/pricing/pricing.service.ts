@@ -136,7 +136,7 @@ export class PricingService {
         if (col === 'unitPrice' || col === 'customerId' || col === 'routeId') {
           updateData[col] = Number(merged[col]);
         } else if (col === 'validFrom' || col === 'validTo') {
-          updateData[col] = merged[col] ? new Date(merged[col] as string) : null;
+          updateData[col] = merged[col] ? new Date(merged[col] as string | Date) : null;
         } else {
           updateData[col] = merged[col];
         }
